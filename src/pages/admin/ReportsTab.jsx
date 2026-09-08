@@ -1,12 +1,37 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Card from '../../components/ui/Card.jsx'
-import Badge from '../../components/ui/Badge.jsx'
-import { AdminTabs } from './AdminDashboard.jsx'
+import Button from '../../components/ui/Button.jsx'
+import Avatar from '../../components/ui/Avatar.jsx'
+import { CATEGORIES, UNITS } from './DonationsTab.jsx'
 import { supabase } from '../../lib/supabase.js'
 
-function ReplyForm({ flagId, onSubmitted }) {
+function toCsv(rows, columns) {
+  const header = columns.map((c) => `"${c.label}"`).join(',')
+  const body = rows
+    .map((row) =>
+      columns
+        .map((c) => `"${String(row[c.key] ?? '').replace(/"/g, '""')}"`)
+        .join(',')
+    )
+    .join('\n')
+  return `${header}\n${body}`
+}
+
+function downloadCsv(filename, csvContent) {
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+function ReplyForm({ flag, onReplied }) {
   const [open, setOpen] = useState(false)
-  const [reply, setReply] = useState('')
+  const [reply, setReply] = useState(flag.admin_reply || '')
   const [saving, setSaving] = useState(false)
 
   async function submit() {
@@ -15,162 +40,207 @@ function ReplyForm({ flagId, onSubmitted }) {
     const { error } = await supabase
       .from('donation_flags')
       .update({ admin_reply: reply.trim(), replied_at: new Date().toISOString() })
-      .eq('id', flagId)
+      .eq('id', flag.id)
     setSaving(false)
-    if (!error) { setReply(''); setOpen(false); onSubmitted?.() }
+    if (!error) {
+      setOpen(false)
+      onReplied?.()
+    }
   }
 
-  if (!open) return (
-    <button onClick={() => setOpen(true)} className="mt-1 text-[11px] font-semibold text-admin hover:underline">
-      Reply
-    </button>
-  )
+  if (flag.admin_reply && !open) {
+    return (
+      <div className="mt-1">
+        <div className="rounded-lg bg-beneficiary-light px-3 py-2 text-[11px] text-beneficiary-dark">
+          Your reply: "{flag.admin_reply}"
+        </div>
+        <button
+          onClick={() => setOpen(true)}
+          className="mt-1 text-[11px] font-semibold text-faint hover:text-admin"
+        >
+          Edit reply
+        </button>
+      </div>
+    )
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="mt-1 text-[11px] font-semibold text-admin-dark"
+      >
+        Reply to donor
+      </button>
+    )
+  }
 
   return (
-    <div className="mt-2">
-      <textarea value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Type your reply…" rows={2}
-        className="w-full rounded-lg border border-line bg-white px-3 py-2 text-xs outline-none focus:border-admin" />
+    <div className="mt-1">
+      <textarea
+        value={reply}
+        onChange={(e) => setReply(e.target.value)}
+        placeholder="e.g. Corrected the quantity to 25kg, thank you for flagging."
+        rows={2}
+        className="w-full rounded-lg border border-line bg-white px-3 py-2 text-xs outline-none focus:border-admin"
+      />
       <div className="mt-1 flex gap-2">
-        <button onClick={submit} disabled={saving} className="rounded-lg bg-admin px-3 py-1.5 text-[11px] font-bold text-white disabled:opacity-50">
+        <button
+          onClick={submit}
+          disabled={saving}
+          className="rounded-lg bg-admin px-3 py-1.5 text-[11px] font-bold text-white disabled:opacity-50"
+        >
           {saving ? 'Sending…' : 'Send reply'}
         </button>
-        <button onClick={() => setOpen(false)} className="rounded-lg px-3 py-1.5 text-[11px] font-semibold text-faint">Cancel</button>
+        <button
+          onClick={() => setOpen(false)}
+          className="rounded-lg px-3 py-1.5 text-[11px] font-semibold text-faint"
+        >
+          Cancel
+        </button>
       </div>
     </div>
   )
 }
 
-function DetailRow({ label, value }) {
-  if (!value && value !== 0) return null
+const editInputClass = "w-full rounded-lg border border-line bg-white px-3 py-2 text-xs outline-none focus:border-admin"
+
+function EditDistributionRow({ dist, onCancel, onSaved }) {
+  const [form, setForm] = useState({
+    category: dist.category || '',
+    item: dist.item || '',
+    quantity: dist.quantity ?? '',
+    unit: dist.unit || 'kg',
+    barangay: dist.barangay || '',
+    household_head: dist.household_head || '',
+    serial_number: dist.serial_number || '',
+  })
+  const [saving, setSaving] = useState(false)
+
+  function update(field, value) {
+    setForm((f) => ({ ...f, [field]: value }))
+  }
+
+  async function save() {
+    setSaving(true)
+    const { error } = await supabase
+      .from('distributions')
+      .update({
+        category: form.category,
+        item: form.item,
+        quantity: Number(form.quantity) || 0,
+        unit: form.unit,
+        barangay: form.barangay,
+        household_head: form.household_head,
+        serial_number: form.serial_number,
+      })
+      .eq('id', dist.id)
+    setSaving(false)
+    if (!error) onSaved()
+  }
+
   return (
-    <div>
-      <div className="text-[10px] uppercase tracking-wide text-faint">{label}</div>
-      <div className="text-xs text-ink">{value}</div>
+    <div className="rounded-lg border border-admin bg-admin-light px-4 py-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div>
+          <label className="mb-1 block text-[11px] font-semibold text-muted">Category</label>
+          <select
+            value={form.category}
+            onChange={(e) => update('category', e.target.value)}
+            className={editInputClass}
+          >
+            <option value="" disabled>Select category</option>
+            {Object.keys(CATEGORIES).map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-[11px] font-semibold text-muted">Item</label>
+          <input value={form.item} onChange={(e) => update('item', e.target.value)} className={editInputClass} />
+        </div>
+        <div>
+          <label className="mb-1 block text-[11px] font-semibold text-muted">Quantity</label>
+          <input type="number" min="0" value={form.quantity} onChange={(e) => update('quantity', e.target.value)} className={editInputClass} />
+        </div>
+        <div>
+          <label className="mb-1 block text-[11px] font-semibold text-muted">Unit</label>
+          <select value={form.unit} onChange={(e) => update('unit', e.target.value)} className={editInputClass}>
+            {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-[11px] font-semibold text-muted">Barangay</label>
+          <input value={form.barangay} onChange={(e) => update('barangay', e.target.value)} className={editInputClass} />
+        </div>
+        <div>
+          <label className="mb-1 block text-[11px] font-semibold text-muted">Household head</label>
+          <input value={form.household_head} onChange={(e) => update('household_head', e.target.value)} className={editInputClass} />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="mb-1 block text-[11px] font-semibold text-muted">Serial number</label>
+          <input value={form.serial_number} onChange={(e) => update('serial_number', e.target.value)} className={editInputClass} />
+        </div>
+      </div>
+      <div className="mt-3 flex gap-2">
+        <button
+          onClick={save}
+          disabled={saving}
+          className="rounded-lg bg-admin px-3 py-1.5 text-[11px] font-bold text-white disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save changes'}
+        </button>
+        <button onClick={onCancel} className="rounded-lg px-3 py-1.5 text-[11px] font-semibold text-faint">
+          Cancel
+        </button>
+      </div>
     </div>
   )
 }
 
-function DistributionRow({ record }) {
-  const [open, setOpen] = useState(false)
-  const [signatureUrl, setSignatureUrl] = useState(null)
-  const [loadingSig, setLoadingSig] = useState(false)
-
-  const headName = [record.head_last_name, record.head_first_name, record.head_middle_name]
-    .filter(Boolean)
-    .join(', ') || record.household_head || 'Unnamed'
-
-  async function toggleOpen() {
-    setOpen((v) => !v)
-    if (!open && !signatureUrl && (record.thumbmark_data || record.signature_path)) {
-      setLoadingSig(true)
-      const path = record.thumbmark_data || record.signature_path
-      const { data } = await supabase.storage.from('signatures').createSignedUrl(path, 3600)
-      setSignatureUrl(data?.signedUrl || null)
-      setLoadingSig(false)
-    }
+function DistributionRow({ dist, isOpen, onToggle, isEditing, onEdit, onCancelEdit, onSaved }) {
+  if (isEditing) {
+    return <EditDistributionRow dist={dist} onCancel={onCancelEdit} onSaved={onSaved} />
   }
 
-  const familyMembers = Array.isArray(record.family_members) ? record.family_members : []
-
   return (
-    <div className="border-b border-line-soft last:border-b-0">
+    <div className="rounded-lg border border-line-soft">
       <button
-        onClick={toggleOpen}
-        className="flex w-full items-center justify-between px-1 py-3 text-left hover:bg-line-soft/40"
+        onClick={onToggle}
+        className="flex w-full flex-wrap items-center justify-between gap-2 px-4 py-3 text-left"
       >
         <div>
-          <div className="text-sm font-semibold text-ink">{headName}</div>
-          <div className="text-xs text-faint">
-            {record.serial_number ? `#${record.serial_number} · ` : ''}
-            Brgy. {record.barangay || '—'} · {record.item || '—'} {record.quantity ? `(${record.quantity})` : ''}
+          <div className="text-sm font-semibold text-ink">
+            {dist.item} {dist.quantity ? `— ${dist.quantity} ${dist.unit || ''}` : ''}
           </div>
+         <div className="flex flex-wrap items-center gap-1.5 text-xs text-faint">
+  <span>{dist.household_head || 'Unnamed household'} · Brgy. {dist.barangay || '—'} ·</span>
+  <span className="rounded bg-admin-light px-1.5 py-0.5 font-mono text-[11px] font-bold text-admin-dark">
+    {dist.serial_number || '—'}
+  </span>
+</div>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-faint">{new Date(record.created_at).toLocaleDateString()}</span>
-          <Badge tone="confirmed">{record.status || 'confirmed'}</Badge>
-          <span className="text-xs text-faint">{open ? '▲' : '▼'}</span>
+          <div className="text-xs text-faint">{new Date(dist.created_at).toLocaleDateString()}</div>
+          <span className="text-xs text-faint">{isOpen ? '▲' : '▼'}</span>
         </div>
       </button>
 
-      {open && (
-        <div className="mb-3 rounded-lg bg-line-soft/40 p-4">
-          <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <DetailRow label="Serial number" value={record.serial_number} />
-            <DetailRow label="Region" value={record.region} />
-            <DetailRow label="Province" value={record.province} />
-            <DetailRow label="District" value={record.district} />
-            <DetailRow label="City/Municipality" value={record.city_municipality} />
-            <DetailRow label="Evacuation center" value={record.evacuation_center} />
+      {isOpen && (
+        <div className="border-t border-line-soft px-4 py-3 text-xs text-muted">
+          <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
+            <div><span className="text-faint">Category:</span> {dist.category || '—'}</div>
+            <div><span className="text-faint">Region/Province:</span> {[dist.region, dist.province].filter(Boolean).join(', ') || '—'}</div>
+            <div><span className="text-faint">City/Municipality:</span> {dist.city_municipality || '—'}</div>
+            <div><span className="text-faint">Evacuation center:</span> {dist.evacuation_center || '—'}</div>
+            <div><span className="text-faint">Contact:</span> {dist.contact_primary || '—'}</div>
+            <div><span className="text-faint">4Ps beneficiary:</span> {dist.is_4ps_beneficiary ? 'Yes' : 'No'}</div>
+            <div><span className="text-faint">Status:</span> {dist.status || '—'}</div>
           </div>
-
-          <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <DetailRow label="Birthdate" value={record.head_birthdate} />
-            <DetailRow label="Age" value={record.head_age} />
-            <DetailRow label="Sex" value={record.head_sex} />
-            <DetailRow label="Civil status" value={record.civil_status} />
-            <DetailRow label="Occupation" value={record.occupation} />
-            <DetailRow label="Monthly income" value={record.monthly_family_income} />
-            <DetailRow label="Contact" value={record.contact_primary} />
-            <DetailRow label="Alt. contact" value={record.contact_alternate} />
-            <DetailRow label="Address" value={record.permanent_address} />
-          </div>
-
-          <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <DetailRow label="Older persons" value={record.vulnerable_older_persons} />
-            <DetailRow label="Pregnant women" value={record.vulnerable_pregnant_women} />
-            <DetailRow label="Lactating women" value={record.vulnerable_lactating_women} />
-            <DetailRow label="PWDs" value={record.vulnerable_pwds} />
-            <DetailRow label="House ownership" value={record.house_ownership} />
-            <DetailRow label="Shelter damage" value={record.shelter_damage} />
-            <DetailRow label="4Ps beneficiary" value={record.is_4ps_beneficiary ? 'Yes' : 'No'} />
-            <DetailRow label="IP ethnicity" value={record.ip_ethnicity} />
-          </div>
-
-          {familyMembers.length > 0 && (
-            <div className="mb-3">
-              <div className="mb-1 text-[10px] uppercase tracking-wide text-faint">Family members</div>
-              <div className="overflow-x-auto rounded border border-line-soft">
-                <table className="w-full min-w-[500px] text-xs">
-                  <thead>
-                    <tr className="bg-white text-left text-faint">
-                      <th className="px-2 py-1 font-semibold">Name</th>
-                      <th className="px-2 py-1 font-semibold">Relation</th>
-                      <th className="px-2 py-1 font-semibold">Age</th>
-                      <th className="px-2 py-1 font-semibold">Sex</th>
-                      <th className="px-2 py-1 font-semibold">Occupation</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {familyMembers.map((m, i) => (
-                      <tr key={i} className="border-t border-line-soft bg-white">
-                        <td className="px-2 py-1">{m.name || '—'}</td>
-                        <td className="px-2 py-1">{m.relation || '—'}</td>
-                        <td className="px-2 py-1">{m.age || '—'}</td>
-                        <td className="px-2 py-1">{m.sex || '—'}</td>
-                        <td className="px-2 py-1">{m.occupation || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-3 border-t border-line-soft pt-3">
-            <DetailRow label="Date registered" value={record.date_registered} />
-            <DetailRow label="Brgy. captain" value={record.brgy_captain_name} />
-            <DetailRow label="LSWDO" value={record.lswdo_name} />
-          </div>
-
-          {(record.thumbmark_data || record.signature_path) && (
-            <div className="mt-3">
-              <div className="mb-1 text-[10px] uppercase tracking-wide text-faint">Signature / Thumbmark</div>
-              {loadingSig && <p className="text-xs text-faint">Loading…</p>}
-              {signatureUrl && (
-                <img src={signatureUrl} alt="Signature" className="h-20 rounded border border-line-soft bg-white" />
-              )}
-            </div>
-          )}
+          <button
+            onClick={onEdit}
+            className="mt-3 rounded-lg bg-line-soft px-3 py-1.5 text-[11px] font-semibold text-ink hover:bg-line"
+          >
+            Edit this record
+          </button>
         </div>
       )}
     </div>
@@ -178,162 +248,345 @@ function DistributionRow({ record }) {
 }
 
 export default function ReportsTab() {
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [donations, setDonations] = useState([])
   const [distributions, setDistributions] = useState([])
   const [donors, setDonors] = useState([])
   const [flags, setFlags] = useState([])
-  const [distSearch, setDistSearch] = useState('')
   const [loading, setLoading] = useState(true)
-
-  async function loadFlags() {
-    const { data } = await supabase.from('donation_flags').select('*').order('created_at', { ascending: false })
-    setFlags(data || [])
-  }
+  const [busyFlagId, setBusyFlagId] = useState(null)
+  const [openDistId, setOpenDistId] = useState(null)
+  const [editingDistId, setEditingDistId] = useState(null)
 
   async function loadAll() {
     setLoading(true)
-
-    const { data: donationsData } = await supabase.from('donations').select('*').order('created_at', { ascending: false })
-    const { data: distributionsData } = await supabase.from('distributions').select('*').order('created_at', { ascending: false })
-    const { data: donorsData } = await supabase.from('profiles').select('*').eq('role', 'donor')
-
-    setDonations(donationsData || [])
-    setDistributions(distributionsData || [])
-    setDonors(donorsData || [])
+    const [donationsRes, distributionsRes, donorsRes, flagsRes] = await Promise.all([
+      supabase.from('donations').select('*').order('created_at', { ascending: false }),
+      supabase.from('distributions').select('*').order('created_at', { ascending: false }),
+      supabase.from('profiles').select('*').eq('role', 'donor'),
+      supabase
+        .from('donation_flags')
+        .select('*')
+        .neq('status', 'archived')
+        .order('created_at', { ascending: false }),
+    ])
+    setDonations(donationsRes.data || [])
+    setDistributions(distributionsRes.data || [])
+    setDonors(donorsRes.data || [])
+    setFlags(flagsRes.data || [])
     setLoading(false)
-    await loadFlags()
   }
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => {
+    loadAll()
+  }, [])
 
-  const barangaySummary = donations.reduce((acc, d) => {
-    const key = d.barangay || 'Unspecified'
-    if (!acc[key]) acc[key] = { total: 0, confirmed: 0 }
-    acc[key].total += 1
-    if (d.status === 'confirmed') acc[key].confirmed += 1
-    return acc
-  }, {})
-
-  function exportBarangaySummaryCSV() {
-    const rows = [['Barangay', 'Total donations', 'Confirmed']]
-    Object.entries(barangaySummary).forEach(([brgy, s]) => rows.push([brgy, s.total, s.confirmed]))
-    downloadCSV(rows, 'barangay_summary.csv')
+  async function archiveFlag(id) {
+    setBusyFlagId(id)
+    const { error } = await supabase
+      .from('donation_flags')
+      .update({ status: 'archived', archived_at: new Date().toISOString() })
+      .eq('id', id)
+    setBusyFlagId(null)
+    if (!error) loadAll()
   }
 
-  function downloadCSV(rows, filename) {
-    const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url; a.download = filename; a.click()
-    URL.revokeObjectURL(url)
+  const filteredDonations = useMemo(() => {
+    return donations.filter((d) => {
+      const created = d.created_at?.slice(0, 10)
+      if (dateFrom && created < dateFrom) return false
+      if (dateTo && created > dateTo) return false
+      return true
+    })
+  }, [donations, dateFrom, dateTo])
+
+  const filteredDistributions = useMemo(() => {
+    return distributions.filter((d) => {
+      const created = d.created_at?.slice(0, 10)
+      if (dateFrom && created < dateFrom) return false
+      if (dateTo && created > dateTo) return false
+      return true
+    })
+  }, [distributions, dateFrom, dateTo])
+
+  const byBarangay = useMemo(() => {
+    const map = {}
+    filteredDonations.forEach((d) => {
+      const b = d.barangay || 'Unspecified'
+      map[b] = map[b] || { barangay: b, donations: 0, confirmed: 0 }
+      map[b].donations += 1
+      if (d.status === 'confirmed') map[b].confirmed += 1
+    })
+    return Object.values(map).sort((a, b) => b.donations - a.donations)
+  }, [filteredDonations])
+
+  const distributionsByBarangay = useMemo(() => {
+    const map = {}
+    filteredDistributions.forEach((d) => {
+      const b = d.barangay || 'Unspecified'
+      map[b] = map[b] || { barangay: b, distributions: 0 }
+      map[b].distributions += 1
+    })
+    return Object.values(map).sort((a, b) => b.distributions - a.distributions)
+  }, [filteredDistributions])
+
+  const uniqueHouseholds = useMemo(() => {
+    return new Set(
+      filteredDistributions
+        .map((d) => d.serial_number || d.household_head)
+        .filter(Boolean)
+    ).size
+  }, [filteredDistributions])
+
+  const donorSummaries = useMemo(() => {
+    return donors
+      .map((donor) => {
+        const theirDonations = donations.filter((d) => d.donor_id === donor.id)
+        const theirFlags = flags.filter((f) => f.donor_id === donor.id)
+        return { donor, donations: theirDonations, flags: theirFlags }
+      })
+      .filter((s) => s.donations.length > 0 || s.flags.length > 0)
+  }, [donors, donations, flags])
+
+  function exportDistributionsCsv() {
+    const csv = toCsv(filteredDistributions, [
+      { key: 'created_at', label: 'Date' },
+      { key: 'serial_number', label: 'Serial number' },
+      { key: 'household_head', label: 'Household head' },
+      { key: 'barangay', label: 'Barangay' },
+      { key: 'category', label: 'Category' },
+      { key: 'item', label: 'Item' },
+      { key: 'quantity', label: 'Quantity' },
+      { key: 'unit', label: 'Unit' },
+      { key: 'status', label: 'Status' },
+    ])
+    downloadCsv(`distributions_report_${dateFrom || 'all'}_${dateTo || 'all'}.csv`, csv)
   }
 
-  function flagsFor(donorId) {
-    return flags.filter((f) => f.donor_id === donorId)
+  function exportBarangaySummaryCsv() {
+    const csv = toCsv(byBarangay, [
+      { key: 'barangay', label: 'Barangay' },
+      { key: 'donations', label: 'Total donations' },
+      { key: 'confirmed', label: 'Confirmed' },
+    ])
+    downloadCsv(`barangay_summary_${dateFrom || 'all'}_${dateTo || 'all'}.csv`, csv)
   }
-
-  const householdsServed = new Set(distributions.map((d) => d.beneficiary_id).filter(Boolean)).size
-
-  const filteredDistributions = distributions.filter((d) => {
-    if (!distSearch.trim()) return true
-    const q = distSearch.trim().toLowerCase()
-    const name = [d.head_last_name, d.head_first_name, d.household_head].filter(Boolean).join(' ').toLowerCase()
-    return (
-      name.includes(q) ||
-      (d.serial_number || '').toLowerCase().includes(q) ||
-      (d.barangay || '').toLowerCase().includes(q)
-    )
-  })
 
   return (
-    <div className="min-h-screen bg-cream px-4 py-8">
-      <div className="mx-auto max-w-5xl">
-        <h1 className="mb-1 text-xl font-bold text-admin-dark">Reports</h1>
-        <p className="mb-6 text-xs text-faint">Records for DSWD / LGU reporting</p>
-        <AdminTabs />
+    <>
+      <div className="mb-6 rounded-card bg-white/90 p-5 shadow-[0_2px_6px_rgba(0,0,0,0.08)]">
+  <h1 className="mb-1 text-xl font-bold text-admin-dark">Reports</h1>
+  <p className="text-xs text-faint">
+    Filter by date range and export records for DSWD / LGU reporting
+  </p>
+</div>
 
-        <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Card className="p-5"><div className="text-xs text-faint">Total donations</div><div className="mt-1 text-2xl font-bold text-ink">{donations.length}</div></Card>
-          <Card className="p-5"><div className="text-xs text-faint">Total distributions</div><div className="mt-1 text-2xl font-bold text-ink">{distributions.length}</div></Card>
-          <Card className="p-5"><div className="text-xs text-faint">Households served</div><div className="mt-1 text-2xl font-bold text-ink">{householdsServed}</div></Card>
-        </div>
-
-        {/* Distribution records */}
-        <Card className="mb-4 p-6">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-bold text-ink">Distribution records</h2>
+      <Card className="mb-4 p-5">
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="mb-1 block text-[11px] font-semibold text-muted">From</label>
             <input
-              placeholder="Search by name, serial number, or barangay"
-              value={distSearch}
-              onChange={(e) => setDistSearch(e.target.value)}
-              className="w-full max-w-xs rounded-lg border border-line bg-white px-3 py-2 text-xs outline-none focus:border-admin"
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-admin"
             />
           </div>
-          {loading && <p className="text-xs text-faint">Loading…</p>}
-          {!loading && filteredDistributions.length === 0 && (
-            <p className="text-xs text-faint">No distribution records found.</p>
-          )}
           <div>
-            {filteredDistributions.map((record) => (
-              <DistributionRow key={record.id} record={record} />
-            ))}
+            <label className="mb-1 block text-[11px] font-semibold text-muted">To</label>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-admin"
+            />
           </div>
-        </Card>
+          {(dateFrom || dateTo) && (
+            <button
+              onClick={() => {
+                setDateFrom('')
+                setDateTo('')
+              }}
+              className="text-xs font-semibold text-faint hover:text-admin"
+            >
+              Clear dates
+            </button>
+          )}
+        </div>
+      </Card>
 
-        <Card className="mb-4 p-6">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-bold text-ink">Donations by barangay</h2>
-            <button onClick={exportBarangaySummaryCSV} className="text-xs font-semibold text-admin-dark hover:underline">Export CSV ↓</button>
-          </div>
-          <div className="space-y-2">
-            {Object.entries(barangaySummary).map(([brgy, s]) => (
-              <div key={brgy} className="flex items-center justify-between border-b border-line-soft py-2 text-sm">
-                <span className="text-ink">Brgy. {brgy}</span>
-                <span className="text-xs text-faint">{s.total} total · {s.confirmed} confirmed</span>
+      {loading ? (
+        <p className="text-xs text-faint">Loading report data…</p>
+      ) : (
+        <>
+          <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Card className="p-5">
+              <div className="text-xs text-faint">Donations in range</div>
+              <div className="mt-1 text-2xl font-bold text-ink">{filteredDonations.length}</div>
+            </Card>
+            <Card className="p-5">
+              <div className="text-xs text-faint">Distributions in range</div>
+              <div className="mt-1 text-2xl font-bold text-ink">
+                {filteredDistributions.length}
               </div>
-            ))}
-            {Object.keys(barangaySummary).length === 0 && <p className="text-xs text-faint">No donations recorded yet.</p>}
+            </Card>
+            <Card className="p-5">
+              <div className="text-xs text-faint">Households served</div>
+              <div className="mt-1 text-2xl font-bold text-ink">{uniqueHouseholds}</div>
+            </Card>
           </div>
-        </Card>
 
-        <Card className="p-6">
-          <h2 className="mb-4 text-sm font-bold text-ink">Registered donors & comments</h2>
-          {loading && <p className="text-xs text-faint">Loading…</p>}
-          {!loading && donors.length === 0 && <p className="text-xs text-faint">No registered donors yet.</p>}
-          <div className="space-y-4">
-            {donors.map((donor) => {
-              const donorDonations = donations.filter((d) => d.donor_id === donor.id)
-              const donorFlags = flagsFor(donor.id)
-              return (
-                <div key={donor.id} className="rounded-lg border border-line-soft px-4 py-3">
-                  <div className="text-sm font-semibold text-ink">{donor.full_name || donor.email}</div>
-                  <div className="text-xs text-faint">{donor.email}</div>
-                  <div className="mt-2 text-xs text-muted">
-                    Donated: {donorDonations.length === 0 ? 'None yet' : donorDonations.map((d) => `${d.item} (${d.quantity || '—'})`).join(', ')}
-                  </div>
-                  {donorFlags.length > 0 && (
-                    <div className="mt-3 space-y-2 border-t border-line-soft pt-2">
-                      {donorFlags.map((f) => (
-                        <div key={f.id} className="rounded-lg bg-warn-bg px-3 py-2">
-                          <div className="text-[11px] text-warn-text">"{f.message}"</div>
-                          <div className="text-[10px] text-faint">{new Date(f.created_at).toLocaleString()}</div>
-                          {f.admin_reply && (
-                            <div className="mt-1 rounded-lg bg-beneficiary-light px-2 py-1 text-[11px] text-beneficiary-dark">
-                              Admin reply: "{f.admin_reply}"
-                            </div>
-                          )}
-                          {!f.admin_reply && <ReplyForm flagId={f.id} onSubmitted={loadFlags} />}
-                        </div>
-                      ))}
+          <Card className="mb-4 p-5">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-bold text-ink">Donations by barangay</h2>
+              <button
+                onClick={exportBarangaySummaryCsv}
+                className="text-xs font-semibold text-admin-dark"
+              >
+                Export CSV ↓
+              </button>
+            </div>
+            {byBarangay.length === 0 ? (
+              <p className="text-xs text-faint">No donations in this date range.</p>
+            ) : (
+              <div className="divide-y divide-line-soft">
+                {byBarangay.map((row) => (
+                  <div key={row.barangay} className="flex items-center justify-between py-2">
+                    <div className="text-sm text-ink">Brgy. {row.barangay}</div>
+                    <div className="text-xs text-faint">
+                      {row.donations} total · {row.confirmed} confirmed
                     </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </Card>
-      </div>
-    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card className="mb-4 p-5">
+            <h2 className="mb-3 text-sm font-bold text-ink">Distributions by barangay</h2>
+            {distributionsByBarangay.length === 0 ? (
+              <p className="text-xs text-faint">No distributions in this date range.</p>
+            ) : (
+              <div className="divide-y divide-line-soft">
+                {distributionsByBarangay.map((row) => (
+                  <div key={row.barangay} className="flex items-center justify-between py-2">
+                    <div className="text-sm text-ink">Brgy. {row.barangay}</div>
+                    <div className="text-xs text-faint">{row.distributions} distributions</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card className="mb-4 p-5">
+            <h2 className="mb-3 text-sm font-bold text-ink">Recent distributions</h2>
+            <p className="mb-3 text-xs text-faint">Tap a record to view details, or edit it directly.</p>
+            {filteredDistributions.length === 0 ? (
+              <p className="text-xs text-faint">No distributions in this date range.</p>
+            ) : (
+              <div className="space-y-2">
+                {filteredDistributions.map((d) => (
+                  <DistributionRow
+                    key={d.id}
+                    dist={d}
+                    isOpen={openDistId === d.id}
+                    onToggle={() => setOpenDistId((cur) => (cur === d.id ? null : d.id))}
+                    isEditing={editingDistId === d.id}
+                    onEdit={() => setEditingDistId(d.id)}
+                    onCancelEdit={() => setEditingDistId(null)}
+                    onSaved={() => {
+                      setEditingDistId(null)
+                      loadAll()
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card className="mb-4 p-5">
+            <h2 className="mb-3 text-sm font-bold text-ink">Registered donors & comments</h2>
+            <p className="mb-3 text-xs text-faint">
+              Archive a comment once it's been addressed — it'll move to the Archive tab.
+            </p>
+            {donorSummaries.length === 0 ? (
+              <p className="text-xs text-faint">
+                No registered donors with linked donations or comments yet.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {donorSummaries.map(({ donor, donations: theirDonations, flags: theirFlags }) => (
+                  <div key={donor.id} className="rounded-lg border border-line-soft p-4">
+                    <div className="mb-2 flex items-center gap-3">
+                      <Avatar name={donor.full_name} size="sm" />
+                      <div>
+                        <div className="text-sm font-semibold text-ink">
+                          {donor.full_name || 'Unnamed donor'}
+                        </div>
+                        <div className="text-xs text-faint">{donor.email}</div>
+                      </div>
+                    </div>
+
+                    {theirDonations.length > 0 && (
+                      <div className="mb-2 space-y-1">
+                        {theirDonations.map((d) => (
+                          <div key={d.id} className="text-xs text-muted">
+                            • {d.item} {d.quantity ? `(${d.quantity})` : ''} — Brgy.{' '}
+                            {d.barangay} —{' '}
+                            <span className="text-faint">
+                              {new Date(d.created_at).toLocaleString()}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {theirFlags.length > 0 && (
+                      <div className="mt-2 space-y-2 border-t border-line-soft pt-2">
+                        {theirFlags.map((f) => (
+                          <div key={f.id}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="rounded-lg bg-warn-bg px-3 py-2 text-[11px] text-warn-text">
+                                "{f.message}"{' '}
+                                <span className="text-faint">
+                                  — {new Date(f.created_at).toLocaleString()}
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  if (confirm('Archive this comment? It will move to the Archive tab.')) {
+                                    archiveFlag(f.id)
+                                  }
+                                }}
+                                disabled={busyFlagId === f.id}
+                                className="shrink-0 rounded-lg bg-admin px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-admin-dark disabled:opacity-50"
+                              >
+                                {busyFlagId === f.id ? 'Archiving…' : 'Archive'}
+                              </button>
+                            </div>
+                            <ReplyForm flag={f} onReplied={loadAll} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card className="p-5">
+            <div className="mb-1 text-sm font-bold text-ink">Distributions report</div>
+            <p className="mb-3 text-xs text-faint">
+              {filteredDistributions.length} records — household, item, date confirmed
+            </p>
+            <Button variant="admin" onClick={exportDistributionsCsv}>
+              Export distributions CSV
+            </Button>
+          </Card>
+        </>
+      )}
+    </>
   )
 }

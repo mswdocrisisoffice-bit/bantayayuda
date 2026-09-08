@@ -1,5 +1,4 @@
 import { useRef, useState } from 'react'
-import { AdminTabs } from './AdminDashboard.jsx'
 import manoloFortichSeal from '../../assets/manolo-fortich-seal.png'
 import bagongPilipinasLogo from '../../assets/bagong-pilipinas-logo.png'
 
@@ -166,7 +165,7 @@ export default function ReportGenerator() {
   }
 
   return (
-    <div className="min-h-screen bg-cream px-4 py-8">
+    <>
       <style>{`
         @media print {
           .no-print { display: none !important; }
@@ -179,13 +178,15 @@ export default function ReportGenerator() {
         }
       `}</style>
 
-      <div className="mx-auto max-w-5xl no-print">
-        <h1 className="mb-1 text-xl font-bold text-admin-dark">Report generator</h1>
-        <p className="mb-6 text-xs text-faint">
-          Click any text, photo, or signature below to edit it. The letterhead layout stays
-          fixed — only the content changes.
-        </p>
-        <AdminTabs />
+      <div className="no-print">
+      <div className="no-print mb-6 rounded-card bg-white/90 p-5 shadow-[0_2px_6px_rgba(0,0,0,0.08)]">
+  <h1 className="mb-1 text-xl font-bold text-admin-dark">Report generator</h1>
+  <p className="mb-4 text-xs text-faint">
+    Click any text, photo, or signature below to edit it. The letterhead layout stays
+    fixed — only the content changes.
+  </p>
+ 
+</div>
         <div className="mb-4 flex justify-end">
           <button
             onClick={() => window.print()}
@@ -321,6 +322,6 @@ export default function ReportGenerator() {
           />
         </div>
       </div>
-    </div>
+    </>
   )
 }
