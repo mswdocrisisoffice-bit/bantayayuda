@@ -24,77 +24,170 @@ const icons = {
   archive: <><rect x="2.5" y="4" width="19" height="4.5" rx="1" /><path d="M4 8.5V19a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V8.5" /><path d="M10 12.5h4" /></>,
   barangay: <><path d="M12 2 3 7v13h18V7z" /><path d="M9 21v-6h6v6" /></>,
   logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" /></>,
+  chevronLeft: <path d="m15 6-6 6 6 6" />,
+  chevronRight: <path d="m9 6 6 6-6 6" />,
+  chevronDown: <path d="m6 9 6 6 6-6" />,
 }
 
 const TABS = [
   { label: 'Overview', to: '/admin/dashboard', icon: 'overview' },
   { label: 'Donations', to: '/admin/donations', icon: 'donations' },
   { label: 'Beneficiary registry', to: '/admin/beneficiaries', icon: 'beneficiaries' },
-  { label: 'Record distribution', to: '/admin/distribution', icon: 'distribution' },
+  {
+    label: 'Record distribution',
+    to: '/admin/distribution',
+    icon: 'distribution',
+    children: [
+      { label: 'Register new family', to: '/admin/distribution?mode=new' },
+      { label: 'Existing beneficiary', to: '/admin/distribution?mode=existing' },
+    ],
+  },
   { label: 'Inventory', to: '/admin/inventory', icon: 'inventory' },
   { label: 'Reports', to: '/admin/reports', icon: 'reports' },
   { label: 'Report generator', to: '/admin/report-generator', icon: 'generator' },
   { label: 'Archive', to: '/admin/archive', icon: 'archive' },
 ]
 
-export function AdminTabs() {
-  const { pathname } = useLocation()
+export function AdminTabs({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) {
+  const { pathname, search } = useLocation()
   const navigate = useNavigate()
+  const [openMenu, setOpenMenu] = useState(null)
 
   async function handleLogout() {
     await supabase.auth.signOut()
     navigate('/admin/login')
   }
 
+  const groups = [
+    { title: null, items: [TABS[0]] },
+    { title: 'Operations', items: [TABS[2], TABS[3]] },
+    { title: 'Data & Reports', items: [TABS[1], TABS[4], TABS[5], TABS[6]] },
+    { title: null, items: [TABS[7]] },
+  ]
+
   return (
-    <div className="mb-6 overflow-hidden rounded-card shadow-[0_2px_6px_rgba(0,0,0,0.08)]">
-      {/* Branded header — mirrors the BantayAyuda landing page */}
-      <div className="flex items-center justify-between bg-navy px-5 py-4 text-white sm:px-6">
-       <Link to="/admin/dashboard" className="flex items-center gap-3">
-  <img src={bantayayudaSeal} alt="BantayAyuda seal" className="h-14 w-14 shrink-0" />
-  <div>
-    <div className="text-base font-bold leading-tight tracking-tight">BantayAyuda</div>
-    <div className="text-[11px] text-white/60">
-      Relief goods and distribution tracking · Manolo Fortich
-    </div>
-  </div>
-</Link>
-        <div className="flex items-center gap-2 sm:gap-3">
-          <span className="hidden items-center gap-1.5 rounded-full bg-admin/90 px-3 py-1.5 text-[11px] font-bold text-white sm:flex">
-            <span className="h-1.5 w-1.5 rounded-full bg-white" />
-            Administrator
-          </span>
+    <>
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-navy text-white transition-all duration-200 lg:sticky lg:top-0 lg:h-screen
+          ${collapsed ? 'w-[72px]' : 'w-64'}
+          ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
+      >
+        <Link
+          to="/admin/dashboard"
+          className="flex items-center gap-3 border-b border-white/10 px-4 py-4"
+          onClick={() => setMobileOpen(false)}
+        >
+          <img src={bantayayudaSeal} alt="BantayAyuda seal" className="h-10 w-10 shrink-0" />
+          {!collapsed && (
+            <div className="min-w-0">
+              <div className="truncate text-base font-bold leading-tight tracking-tight">BantayAyuda</div>
+              <div className="truncate text-[10px] text-white/60">Manolo Fortich</div>
+            </div>
+          )}
+        </Link>
+
+        <nav className="flex-1 space-y-4 overflow-y-auto px-2.5 py-4">
+          {groups.map((g, i) => (
+            <div key={i}>
+              {g.title && !collapsed && (
+                <div className="mb-1.5 px-2.5 text-[10px] font-bold uppercase tracking-wider text-white/35">
+                  {g.title}
+                </div>
+              )}
+              <div className="space-y-0.5">
+                {g.items.map((t) => {
+                  const active = pathname === t.to
+                  const hasChildren = !!t.children
+
+                  if (hasChildren && !collapsed) {
+                    const isOpen = openMenu === t.to || active
+                    return (
+                      <div key={t.to}>
+                        <button
+                          onClick={() => setOpenMenu((m) => (m === t.to ? null : t.to))}
+                          className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-xs font-bold transition-colors ${
+                            active ? 'bg-admin text-white' : 'text-white/65 hover:bg-white/10 hover:text-white'
+                          }`}
+                        >
+                          <Icon path={icons[t.icon]} className="h-4 w-4 shrink-0" />
+                          <span className="flex-1 truncate text-left">{t.label}</span>
+                          <Icon
+                            path={isOpen ? icons.chevronDown : icons.chevronRight}
+                            className="h-3.5 w-3.5 shrink-0 opacity-70"
+                          />
+                        </button>
+                        {isOpen && (
+                          <div className="ml-4 mt-0.5 space-y-0.5 border-l border-white/10 pl-2.5">
+                            {t.children.map((c) => {
+                              const childActive = pathname + search === c.to
+                              return (
+                                <Link
+                                  key={c.to}
+                                  to={c.to}
+                                  onClick={() => setMobileOpen(false)}
+                                  className={`block rounded-lg px-2.5 py-2 text-[11px] font-semibold transition-colors ${
+                                    childActive ? 'bg-white/15 text-white' : 'text-white/55 hover:bg-white/10 hover:text-white'
+                                  }`}
+                                >
+                                  {c.label}
+                                </Link>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <Link
+                      key={t.to}
+                      to={t.to}
+                      onClick={() => setMobileOpen(false)}
+                      title={collapsed ? t.label : undefined}
+                      className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-xs font-bold transition-colors ${
+                        active ? 'bg-admin text-white' : 'text-white/65 hover:bg-white/10 hover:text-white'
+                      } ${collapsed ? 'justify-center' : ''}`}
+                    >
+                      <Icon path={icons[t.icon]} className="h-4 w-4 shrink-0" />
+                      {!collapsed && <span className="truncate">{t.label}</span>}
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        <div className="space-y-2 border-t border-white/10 px-2.5 py-3">
+          {!collapsed && (
+            <span className="flex w-fit items-center gap-1.5 rounded-full bg-admin/90 px-3 py-1.5 text-[11px] font-bold text-white">
+              <span className="h-1.5 w-1.5 rounded-full bg-white" />
+              Administrator
+            </span>
+          )}
           <button
             onClick={handleLogout}
-            className="flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1.5 text-[11px] font-semibold text-white/80 transition-colors hover:border-white/30 hover:bg-white/5 hover:text-white"
+            className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-xs font-semibold text-white/70 transition-colors hover:bg-white/10 hover:text-white ${collapsed ? 'justify-center' : ''}`}
           >
-            <Icon path={icons.logout} className="h-3.5 w-3.5" />
-            Log out
+            <Icon path={icons.logout} className="h-4 w-4 shrink-0" />
+            {!collapsed && 'Log out'}
+          </button>
+          <button
+            onClick={() => setCollapsed((c) => !c)}
+            className="hidden w-full items-center justify-center rounded-lg px-2.5 py-2 text-white/50 transition-colors hover:bg-white/10 hover:text-white lg:flex"
+          >
+            <Icon path={collapsed ? icons.chevronRight : icons.chevronLeft} className="h-4 w-4" />
           </button>
         </div>
-      </div>
-
-      {/* Tab bar */}
-      <div className="flex gap-1 overflow-x-auto border-b border-line bg-white px-2 py-1.5 sm:px-3">
-        {TABS.map((t) => {
-          const active = pathname === t.to
-          return (
-            <Link
-              key={t.to}
-              to={t.to}
-              className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition-colors ${
-                active
-                  ? 'bg-admin-light text-admin-dark'
-                  : 'text-faint hover:bg-line-soft hover:text-muted'
-              }`}
-            >
-              <Icon path={icons[t.icon]} className="h-4 w-4" />
-              {t.label}
-            </Link>
-          )
-        })}
-      </div>
-    </div>
+      </aside>
+    </>
   )
 }
 

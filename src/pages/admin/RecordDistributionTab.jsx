@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import dswdLogo from '../../assets/dswd-logo.png'
 import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
 import ESignatureCanvas from '../../components/ESignatureCanvas.jsx'
-import { CATEGORIES, UNITS } from './DonationsTab.jsx'
 import { supabase } from '../../lib/supabase.js'
 
 const emptyMember = { name: '', relation: '', birthdate: '', age: '', sex: '', education: '', occupation: '', remarks: '' }
@@ -28,6 +28,8 @@ function Field({ number, label, children }) {
 }
 
 const inputClass = "w-full rounded border border-line bg-white px-3 py-2 text-sm outline-none focus:border-admin"
+
+const UNITS = ['kg', 'g', 'l', 'ml', 'pcs', 'boxes', 'sacks', 'packs', 'bottles', 'cans']
 
 function generateSerialNumber() {
   const year = new Date().getFullYear()
@@ -67,16 +69,33 @@ function ModePicker({ mode, onSelect }) {
 
 /* ── Quick form for a beneficiary who's already on file ── */
 function QuickDistributionForm({ existingRecord, onDone }) {
-  const [category, setCategory] = useState('')
-  const [item, setItem] = useState('')
-  const [customItem, setCustomItem] = useState('')
+  const [inventory, setInventory] = useState([])
+  const [loadingInventory, setLoadingInventory] = useState(true)
+  const [selectedItem, setSelectedItem] = useState('')
   const [quantity, setQuantity] = useState('')
-  const [unit, setUnit] = useState('kg')
+  const [unit, setUnit] = useState('')
   const [signature, setSignature] = useState(null)
   const [status, setStatus] = useState('')
 
+  useEffect(() => {
+    async function loadInventory() {
+      const { data } = await supabase
+        .from('inventory')
+        .select('*')
+        .gt('quantity_on_hand', 0)
+        .order('category', { ascending: true })
+        .order('item', { ascending: true })
+      setInventory(data || [])
+      setLoadingInventory(false)
+    }
+    loadInventory()
+  }, [])
+
+  const selected = inventory.find((i) => i.item === selectedItem)
+  const overStock = selected && Number(quantity) > selected.quantity_on_hand
+
   async function handleSubmit() {
-    if (!signature) return
+    if (!signature || !selected || overStock) return
     setStatus('saving')
 
     const fileName = `signatures/${Date.now()}.png`
@@ -85,15 +104,13 @@ function QuickDistributionForm({ existingRecord, onDone }) {
       .from('signatures')
       .upload(fileName, blob, { contentType: 'image/png' })
 
-    const finalItem = item === 'Other (specify)' ? customItem : item
-
     const { error: insertError } = await supabase.from('distributions').insert({
       serial_number: existingRecord.serial_number,
       household_head: existingRecord.household_head,
-      category,
-      item: finalItem,
+      category: selected.category,
+      item: selected.item,
       quantity: Number(quantity),
-      unit,
+      unit: unit || selected.unit,
       barangay: existingRecord.barangay,
       signature_path: fileName,
       thumbmark_data: fileName,
@@ -142,6 +159,9 @@ function QuickDistributionForm({ existingRecord, onDone }) {
       lswdo_name: existingRecord.lswdo_name,
     })
 
+    if (uploadError) console.error('Upload error:', uploadError)
+    if (insertError) console.error('Insert error:', insertError)
+
     setStatus(!uploadError && !insertError ? 'success' : 'error')
   }
 
@@ -177,45 +197,61 @@ function QuickDistributionForm({ existingRecord, onDone }) {
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div>
-          <label className="mb-1 block text-xs font-semibold text-muted">Category</label>
+        <div className="sm:col-span-2">
+          <label className="mb-1 block text-xs font-semibold text-muted">Item (from stock)</label>
           <select
             className={inputClass}
-            value={category}
-            onChange={(e) => { setCategory(e.target.value); setItem(''); setCustomItem('') }}
+            value={selectedItem}
+            disabled={loadingInventory}
+            onChange={(e) => {
+              const chosen = inventory.find((i) => i.item === e.target.value)
+              setSelectedItem(e.target.value)
+              setQuantity('')
+              setUnit(chosen?.unit || 'kg')
+            }}
           >
-            <option value="" disabled>Select category</option>
-            {Object.keys(CATEGORIES).map((c) => <option key={c} value={c}>{c}</option>)}
+            <option value="" disabled>
+              {loadingInventory ? 'Loading inventory…' : inventory.length === 0 ? 'No items in stock' : 'Select item'}
+            </option>
+            {inventory.map((i) => (
+              <option key={i.id} value={i.item}>
+                {i.item} — {i.quantity_on_hand} {i.unit} available
+              </option>
+            ))}
           </select>
         </div>
-        <div>
-          <label className="mb-1 block text-xs font-semibold text-muted">Item</label>
-          <select
-            className={inputClass}
-            value={item}
-            disabled={!category}
-            onChange={(e) => setItem(e.target.value)}
-          >
-            <option value="" disabled>{category ? 'Select item' : 'Pick a category first'}</option>
-            {(category ? [...CATEGORIES[category], 'Other (specify)'] : []).map((i) => <option key={i} value={i}>{i}</option>)}
-          </select>
-        </div>
-        {item === 'Other (specify)' && (
-          <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-semibold text-muted">Specify item name</label>
-            <input className={inputClass} value={customItem} onChange={(e) => setCustomItem(e.target.value)} />
-          </div>
+
+        {selected && (
+          <>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-muted">
+                Quantity to give (max {selected.quantity_on_hand} {selected.unit})
+              </label>
+              <input
+                type="number"
+                min="1"
+                max={selected.quantity_on_hand}
+                className={inputClass}
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+              />
+              {overStock && (
+                <p className="mt-1 text-xs font-semibold text-red-600">
+                  ⚠ Kulang ang stock — {selected.quantity_on_hand} {selected.unit} na lang ang naa.
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-muted">Unit</label>
+              <select className={inputClass} value={unit} onChange={(e) => setUnit(e.target.value)}>
+                {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+              <p className="mt-1 text-[11px] text-faint">
+                Default gikan sa inventory: {selected.unit}. Pwede ilisan kung sayop o lahi ang gamiton nga sukdanan ani nga distribution.
+              </p>
+            </div>
+          </>
         )}
-        <div>
-          <label className="mb-1 block text-xs font-semibold text-muted">Quantity</label>
-          <input type="number" min="0" className={inputClass} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-semibold text-muted">Unit</label>
-          <select className={inputClass} value={unit} onChange={(e) => setUnit(e.target.value)}>
-            {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-          </select>
-        </div>
       </div>
 
       <div className="mt-4 border border-line-soft p-4">
@@ -227,7 +263,7 @@ function QuickDistributionForm({ existingRecord, onDone }) {
       <div className="mt-4 flex items-center gap-3">
         <Button
           variant="admin"
-          disabled={!signature || !category || !item || !quantity || status === 'saving'}
+          disabled={!signature || !selected || !quantity || overStock || status === 'saving'}
           onClick={handleSubmit}
         >
           {status === 'saving' ? 'Saving…' : 'Confirm distribution'}
@@ -319,6 +355,23 @@ function ExistingBeneficiaryFlow({ onSwitchToNew }) {
 /* ── Full FACED registration form for a brand-new family ── */
 function NewFamilyForm({ prefillSerial }) {
   const [serialNumber] = useState(prefillSerial || '')
+  const [inventory, setInventory] = useState([])
+  const [loadingInventory, setLoadingInventory] = useState(true)
+
+  useEffect(() => {
+    async function loadInventory() {
+      const { data } = await supabase
+        .from('inventory')
+        .select('*')
+        .gt('quantity_on_hand', 0)
+        .order('category', { ascending: true })
+        .order('item', { ascending: true })
+      setInventory(data || [])
+      setLoadingInventory(false)
+    }
+    loadInventory()
+  }, [])
+
   const [form, setForm] = useState({
     region: '', province: '', district: '', cityMunicipality: '', barangay: '', evacuationCenter: '',
     lastName: '', firstName: '', middleName: '', nameExt: '',
@@ -328,13 +381,16 @@ function NewFamilyForm({ prefillSerial }) {
     is4Ps: false, ipEthnicity: '',
     vulnerableOlder: 0, vulnerablePregnant: 0, vulnerableLactating: 0, vulnerablePwd: 0,
     houseOwnership: '', shelterDamage: '',
-    category: '', item: '', customItem: '', quantity: '', unit: 'kg',
+    item: '', quantity: '', unit: 'kg',
     dateRegistered: '', brgyCaptainName: '', lswdoName: '',
   })
   const [familyMembers, setFamilyMembers] = useState([{ ...emptyMember }])
   const [signature, setSignature] = useState(null)
   const [status, setStatus] = useState('')
   const [savedSerial, setSavedSerial] = useState('')
+
+  const selectedInventoryItem = inventory.find((i) => i.item === form.item)
+  const overStock = selectedInventoryItem && Number(form.quantity) > selectedInventoryItem.quantity_on_hand
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }))
@@ -353,7 +409,7 @@ function NewFamilyForm({ prefillSerial }) {
   }
 
   async function handleSubmit() {
-    if (!signature) return
+    if (!signature || !selectedInventoryItem || overStock) return
     setStatus('saving')
 
     const finalSerial = serialNumber.trim() || generateSerialNumber()
@@ -365,13 +421,12 @@ function NewFamilyForm({ prefillSerial }) {
       .upload(fileName, blob, { contentType: 'image/png' })
 
     const householdHead = [form.lastName, form.firstName, form.middleName].filter(Boolean).join(', ')
-    const finalItem = form.item === 'Other (specify)' ? form.customItem : form.item
 
     const { error: insertError } = await supabase.from('distributions').insert({
       serial_number: finalSerial,
       household_head: householdHead,
-      category: form.category,
-      item: finalItem,
+      category: selectedInventoryItem.category,
+      item: selectedInventoryItem.item,
       quantity: Number(form.quantity),
       unit: form.unit,
       barangay: form.barangay,
@@ -426,6 +481,8 @@ function NewFamilyForm({ prefillSerial }) {
       setSavedSerial(finalSerial)
       setStatus('success')
     } else {
+      console.error('Upload error:', uploadError)
+      console.error('Insert error:', insertError)
       setStatus('error')
     }
   }
@@ -581,33 +638,56 @@ function NewFamilyForm({ prefillSerial }) {
       <Card className="rounded-none border-0 border-b border-line p-6 shadow-none">
         <SectionHeader>Relief goods distributed</SectionHeader>
         <div className="grid grid-cols-1 gap-3 border border-line-soft p-3 sm:grid-cols-2">
-          <Field label="Category">
-            <select className={inputClass} value={form.category}
-              onChange={(e) => setForm((f) => ({ ...f, category: e.target.value, item: '', customItem: '' }))}>
-              <option value="" disabled>Select category</option>
-              {Object.keys(CATEGORIES).map((c) => <option key={c} value={c}>{c}</option>)}
+          <Field label="Item (from stock)">
+            <select
+              className={inputClass}
+              value={form.item}
+              disabled={loadingInventory}
+              onChange={(e) => {
+                const chosen = inventory.find((i) => i.item === e.target.value)
+                setForm((f) => ({
+                  ...f,
+                  item: e.target.value,
+                  unit: chosen?.unit || 'kg',
+                  quantity: '',
+                }))
+              }}
+            >
+              <option value="" disabled>
+                {loadingInventory ? 'Loading inventory…' : inventory.length === 0 ? 'No items in stock' : 'Select item'}
+              </option>
+              {inventory.map((i) => (
+                <option key={i.id} value={i.item}>
+                  {i.item} — {i.quantity_on_hand} {i.unit} available
+                </option>
+              ))}
             </select>
           </Field>
-          <Field label="Item">
-            <select className={inputClass} value={form.item} disabled={!form.category}
-              onChange={(e) => update('item', e.target.value)}>
-              <option value="" disabled>{form.category ? 'Select item' : 'Pick a category first'}</option>
-              {(form.category ? [...CATEGORIES[form.category], 'Other (specify)'] : []).map((i) => <option key={i} value={i}>{i}</option>)}
-            </select>
+          <Field label={selectedInventoryItem ? `Quantity to give (max ${selectedInventoryItem.quantity_on_hand} ${selectedInventoryItem.unit})` : 'Quantity'}>
+            <input
+              type="number"
+              min="0"
+              max={selectedInventoryItem?.quantity_on_hand}
+              className={inputClass}
+              value={form.quantity}
+              onChange={(e) => update('quantity', e.target.value)}
+            />
+            {overStock && (
+              <p className="mt-1 text-xs font-semibold text-red-600">
+                ⚠ Kulang ang stock — {selectedInventoryItem.quantity_on_hand} {selectedInventoryItem.unit} na lang ang naa.
+              </p>
+            )}
           </Field>
-          {form.item === 'Other (specify)' && (
-            <Field label="Specify item name">
-              <input className={inputClass} value={form.customItem} onChange={(e) => update('customItem', e.target.value)} />
+          {selectedInventoryItem && (
+            <Field label="Unit">
+              <select className={inputClass} value={form.unit} onChange={(e) => update('unit', e.target.value)}>
+                {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+              <p className="mt-1 text-[11px] text-faint">
+                Default gikan sa inventory: {selectedInventoryItem.unit}. Pwede ilisan kung sayop o lahi ang gamiton nga sukdanan ani nga distribution.
+              </p>
             </Field>
           )}
-          <Field label="Quantity">
-            <input type="number" min="0" className={inputClass} value={form.quantity} onChange={(e) => update('quantity', e.target.value)} />
-          </Field>
-          <Field label="Unit">
-            <select className={inputClass} value={form.unit} onChange={(e) => update('unit', e.target.value)}>
-              {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-            </select>
-          </Field>
         </div>
       </Card>
 
@@ -630,7 +710,7 @@ function NewFamilyForm({ prefillSerial }) {
 
         <Button
           variant="admin"
-          disabled={!signature || !form.lastName || !form.firstName || !form.item || !form.category || !form.quantity}
+          disabled={!signature || !form.lastName || !form.firstName || !selectedInventoryItem || !form.quantity || overStock}
           onClick={handleSubmit}
         >
           Confirm distribution
@@ -653,8 +733,15 @@ function NewFamilyForm({ prefillSerial }) {
 }
 
 export default function RecordDistributionTab() {
-  const [mode, setMode] = useState(null) // null | 'new' | 'existing'
+  const [searchParams, setSearchParams] = useSearchParams()
+  const paramMode = searchParams.get('mode')
+  const mode = paramMode === 'new' || paramMode === 'existing' ? paramMode : null
+
   const [prefillSerial, setPrefillSerial] = useState('')
+
+  function selectMode(next) {
+    setSearchParams(next ? { mode: next } : {})
+  }
 
   return (
     <>
@@ -667,13 +754,22 @@ export default function RecordDistributionTab() {
         </div>
       </div>
 
-      <ModePicker mode={mode} onSelect={setMode} />
+      {mode && (
+        <button
+          onClick={() => selectMode(null)}
+          className="mb-4 flex items-center gap-1.5 text-xs font-semibold text-admin-dark hover:underline"
+        >
+          ← Change type
+        </button>
+      )}
+
+      {!mode && <ModePicker mode={mode} onSelect={selectMode} />}
 
       {mode === 'existing' && (
         <ExistingBeneficiaryFlow
           onSwitchToNew={(serial) => {
             setPrefillSerial(serial)
-            setMode('new')
+            selectMode('new')
           }}
         />
       )}
