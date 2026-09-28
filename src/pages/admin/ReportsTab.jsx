@@ -3,6 +3,8 @@ import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
 import Avatar from '../../components/ui/Avatar.jsx'
 import { CATEGORIES, UNITS } from './DonationsTab.jsx'
+import ReportCharts from './ReportCharts.jsx'
+import { BARANGAY_POSITIONS } from '../../components/ui/BarangayMap.jsx'
 import { supabase } from '../../lib/supabase.js'
 
 function toCsv(rows, columns) {
@@ -36,6 +38,64 @@ function formatDateTime(iso) {
     year: 'numeric', month: 'short', day: 'numeric',
     hour: '2-digit', minute: '2-digit',
   })
+}
+
+const LOW_STOCK_THRESHOLD = 10
+
+/* One color family per category so every box is easy to tell apart */
+const CATEGORY_COLORS = {
+  'Food & Nutrition':              { bg: '#FFF4E5', border: '#F5D5A8', accent: '#D97706' },
+  'Hygiene & Personal Care':       { bg: '#E8F3FD', border: '#B9D9F5', accent: '#2563A8' },
+  'Medical & Health Supplies':     { bg: '#FDECEC', border: '#F3BDBD', accent: '#C0392B' },
+  'Clothing & Linens':             { bg: '#F3ECFB', border: '#D9C6F0', accent: '#7C3AED' },
+  'Shelter & Survival Gear':       { bg: '#E9F6EC', border: '#BFE3C8', accent: '#2F855A' },
+  'Education & Child Development': { bg: '#E6F7F6', border: '#B5E3DF', accent: '#0F8B8D' },
+}
+const FALLBACK_COLORS = [
+  { bg: '#FCE9F3', border: '#F1BFDA', accent: '#C2378A' },
+  { bg: '#EEF1F4', border: '#CBD2DA', accent: '#4A5568' },
+  { bg: '#FFF9DB', border: '#F0E29A', accent: '#B7950B' },
+]
+
+function colorFor(category) {
+  if (CATEGORY_COLORS[category]) return CATEGORY_COLORS[category]
+  let hash = 0
+  for (const ch of String(category || '')) hash = (hash * 31 + ch.charCodeAt(0)) % 997
+  return FALLBACK_COLORS[hash % FALLBACK_COLORS.length]
+}
+
+/* Display-only cleanup: "alae" -> "Alae", "fabila, gl, rivera" -> "Fabila, gl, Rivera" */
+function tidy(text) {
+  return String(text || '')
+    .split(' ')
+    .map((w) =>
+      w.replace(/[^a-z]/gi, '').length > 2 && w === w.toLowerCase()
+        ? w.charAt(0).toUpperCase() + w.slice(1)
+        : w
+    )
+    .join(' ')
+}
+
+function StockBadge({ qty }) {
+  if (qty <= 0) {
+    return (
+      <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-admin-dark">
+        Out of stock
+      </span>
+    )
+  }
+  if (qty <= LOW_STOCK_THRESHOLD) {
+    return (
+      <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warn-text">
+        Low stock
+      </span>
+    )
+  }
+  return (
+    <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-beneficiary-dark">
+      In stock
+    </span>
+  )
 }
 
 /* ── Copyable serial number chip ── */
@@ -234,25 +294,33 @@ function EditDistributionRow({ dist, onCancel, onSaved }) {
   )
 }
 
-/* ── One distribution record, shown inside its category group ── */
+/* ── One distribution record, shown inside its beneficiary card ── */
 function DistributionRow({ dist, isOpen, onToggle, isEditing, onEdit, onCancelEdit, onSaved }) {
   if (isEditing) {
     return <EditDistributionRow dist={dist} onCancel={onCancelEdit} onSaved={onSaved} />
   }
 
+  const c = colorFor(dist.category)
+
   return (
-    <div className="rounded-lg border border-line-soft">
-      <div className="flex w-full flex-wrap items-center justify-between gap-2 px-4 py-3">
-        <button onClick={onToggle} className="flex-1 text-left">
-          <div className="text-sm font-semibold text-ink">
-            {dist.item} {dist.quantity ? `— ${dist.quantity} ${dist.unit || ''}` : ''}
-          </div>
-          <div className="mt-1 text-xs text-faint">
-            {dist.category || 'Uncategorized'}
+    <div className="rounded-lg border border-line-soft bg-white">
+      <div className="flex w-full flex-wrap items-center justify-between gap-2 px-3 py-2.5">
+        <button onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+          <span className="h-9 w-1.5 shrink-0 rounded-full" style={{ background: c.accent }} />
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-ink">{dist.item}</div>
+            <div className="text-[11px] text-faint">
+              {dist.category || 'Uncategorized'} · {formatDateTime(dist.created_at)}
+            </div>
           </div>
         </button>
         <div className="flex items-center gap-3">
-          <div className="text-right text-xs text-faint">{formatDateTime(dist.created_at)}</div>
+          <span
+            className="rounded-md px-2.5 py-1 text-xs font-bold"
+            style={{ background: c.bg, color: c.accent }}
+          >
+            {dist.quantity ?? 0} {dist.unit || ''}
+          </span>
           <button onClick={onToggle} className="no-print text-xs text-faint">{isOpen ? '▲' : '▼'}</button>
         </div>
       </div>
@@ -281,38 +349,61 @@ function DistributionRow({ dist, isOpen, onToggle, isEditing, onEdit, onCancelEd
   )
 }
 
-/* ── A collapsible section for one beneficiary, listing every item they received ── */
+/* ── One beneficiary household as a tappable card; opens to list everything they received ── */
 function BeneficiarySection({
   group, isOpen, onToggleSection,
   openDistId, setOpenDistId, editingDistId, setEditingDistId, onSaved,
 }) {
-  const categoryTags = useMemo(() => {
+  const categories = useMemo(() => {
     return [...new Set(group.items.map((d) => d.category || 'Uncategorized'))]
   }, [group.items])
 
   return (
-    <Card className="mb-3 overflow-hidden p-0">
-      <button
+    <div
+      className={`overflow-hidden rounded-card bg-white shadow-[0_2px_6px_rgba(0,0,0,0.08)] ${
+        isOpen ? 'md:col-span-2 print:col-span-1' : ''
+      }`}
+    >
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onToggleSection}
-        className="flex w-full flex-wrap items-center justify-between gap-3 bg-navy px-5 py-3 text-left"
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onToggleSection() }}
+        className="flex w-full cursor-pointer items-start justify-between gap-3 p-4 text-left transition hover:bg-line-soft/40"
       >
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-bold text-white">
-              {group.household_head || 'Unnamed household'}
-            </span>
-            <SerialChip serial={group.serial} />
+        <div className="min-w-0">
+          <div className="truncate text-sm font-bold text-ink">
+            {tidy(group.household_head) || 'Unnamed household'}
           </div>
-          <div className="mt-0.5 text-[11px] text-white/70">
-            Brgy. {group.barangay || '—'} · {group.items.length} item{group.items.length === 1 ? '' : 's'} received
-            {categoryTags.length > 0 && <> · {categoryTags.join(', ')}</>}
+          <div className="mt-0.5 text-[11px] text-faint">
+            Brgy. {tidy(group.barangay) || '—'} · Last: {formatDateTime(group.latest)}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <SerialChip serial={group.serial} />
+            <span className="flex items-center gap-1">
+              {categories.map((cat) => (
+                <span
+                  key={cat}
+                  title={cat}
+                  className="h-2.5 w-2.5 rounded-full"
+                  style={{ background: colorFor(cat).accent }}
+                />
+              ))}
+            </span>
           </div>
         </div>
-        <span className="no-print text-white">{isOpen ? '▲' : '▼'}</span>
-      </button>
+
+        <div className="flex shrink-0 flex-col items-center">
+          <span className="rounded-lg bg-admin-light px-3 py-1.5 text-center text-admin-dark">
+            <span className="block text-xl font-bold leading-none">{group.items.length}</span>
+            <span className="text-[10px] font-semibold">item{group.items.length === 1 ? '' : 's'}</span>
+          </span>
+          <span className="no-print mt-1 text-xs text-faint">{isOpen ? '▲' : '▼'}</span>
+        </div>
+      </div>
 
       {isOpen && (
-        <div className="space-y-2 p-4">
+        <div className="space-y-2 border-t border-line-soft bg-line-soft/30 p-4">
           {group.items.map((d) => (
             <DistributionRow
               key={d.id}
@@ -327,7 +418,227 @@ function BeneficiarySection({
           ))}
         </div>
       )}
-    </Card>
+    </div>
+  )
+}
+
+/* ── One barangay as a tappable box: donations from it + aid given to it ── */
+function BarangayBox({ row, isOpen, onToggle }) {
+  return (
+    <div
+      className={`overflow-hidden rounded-card border-t-4 bg-white shadow-[0_2px_6px_rgba(0,0,0,0.08)] ${
+        isOpen ? 'col-span-2 sm:col-span-3 lg:col-span-4' : ''
+      }`}
+      style={{ borderTopColor: row.official ? '#4A7A2E' : '#E8A33D' }}
+    >
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onToggle}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onToggle() }}
+        className="cursor-pointer p-3 transition hover:bg-line-soft/40"
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="text-sm font-bold leading-tight text-ink">{row.label}</div>
+          <span className="no-print text-xs text-faint">{isOpen ? '▲' : '▼'}</span>
+        </div>
+        {!row.official && row.key !== 'unspecified' && (
+          <div className="mt-0.5 text-[10px] font-semibold text-warn-text">⚠ Not in official list</div>
+        )}
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="rounded-lg bg-donor-light p-2 text-center">
+            <div className="text-xl font-bold leading-none text-donor-dark">{row.donations}</div>
+            <div className="mt-1 text-[10px] font-semibold text-muted">donations</div>
+          </div>
+          <div className="rounded-lg bg-beneficiary-light p-2 text-center">
+            <div className="text-xl font-bold leading-none text-beneficiary-dark">{row.distributions}</div>
+            <div className="mt-1 text-[10px] font-semibold text-muted">given aid</div>
+          </div>
+        </div>
+      </div>
+
+      {isOpen && (
+        <div className="grid gap-4 border-t border-line-soft bg-line-soft/30 p-4 sm:grid-cols-2">
+          <div>
+            <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-donor-dark">
+              Donated from here · {row.confirmed} of {row.donations} confirmed
+            </div>
+            {row.donatedItems.length === 0 ? (
+              <p className="text-[11px] text-faint">No donations.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {row.donatedItems.map((it) => (
+                  <div key={`${it.item}|${it.unit}`} className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 text-xs">
+                    <span className="font-semibold text-ink">{it.item}{it.count > 1 ? ` ×${it.count}` : ''}</span>
+                    <span className="font-bold text-donor-dark">{it.total} {it.unit}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-beneficiary-dark">
+              Given to here · {row.households} household{row.households === 1 ? '' : 's'}
+            </div>
+            {row.givenItems.length === 0 ? (
+              <p className="text-[11px] text-faint">No aid given yet.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {row.givenItems.map((it) => (
+                  <div key={`${it.item}|${it.unit}`} className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 text-xs">
+                    <span className="font-semibold text-ink">{it.item}{it.count > 1 ? ` ×${it.count}` : ''}</span>
+                    <span className="font-bold text-beneficiary-dark">{it.total} {it.unit}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ── One donor as a tappable card: donations grouped by item, plus their comments ── */
+function DonorCard({ donor, donations, flags, onArchiveFlag, busyFlagId, onReplied }) {
+  const [open, setOpen] = useState(false)
+  const [showAll, setShowAll] = useState(false)
+
+  const name =
+    donor.full_name ||
+    donations.find((d) => d.donor_name)?.donor_name ||
+    (donor.email ? donor.email.split('@')[0] : 'Unnamed donor')
+
+  const grouped = useMemo(() => {
+    const map = {}
+    donations.forEach((d) => {
+      const k = `${String(d.item || '').trim().toLowerCase()}|${d.unit || ''}`
+      if (!map[k]) map[k] = { item: d.item || '—', unit: d.unit || '', category: d.category, count: 0, total: 0, last: d.created_at }
+      map[k].count += 1
+      map[k].total += Number(d.quantity) || 0
+      if (new Date(d.created_at) > new Date(map[k].last)) map[k].last = d.created_at
+    })
+    return Object.values(map).sort((a, b) => b.count - a.count || b.total - a.total)
+  }, [donations])
+
+  const unreplied = flags.filter((f) => !f.admin_reply).length
+  const latest = donations[0]?.created_at
+
+  return (
+    <div
+      className={`overflow-hidden rounded-card border border-line-soft bg-white ${
+        open ? 'md:col-span-2' : ''
+      }`}
+    >
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setOpen((o) => !o) }}
+        className="flex cursor-pointer items-center justify-between gap-3 p-4 transition hover:bg-line-soft/40"
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar name={name} size="sm" />
+          <div className="min-w-0">
+            <div className="truncate text-sm font-bold text-ink">{name}</div>
+            <div className="truncate text-[11px] text-faint">{donor.email}</div>
+            {latest && <div className="text-[11px] text-faint">Last donated: {formatDateTime(latest)}</div>}
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <span className="rounded-lg bg-donor-light px-3 py-1.5 text-center text-donor-dark">
+            <span className="block text-xl font-bold leading-none">{donations.length}</span>
+            <span className="text-[10px] font-semibold">donation{donations.length === 1 ? '' : 's'}</span>
+          </span>
+          {flags.length > 0 && (
+            <span className="rounded-full bg-warn-bg px-2 py-0.5 text-[10px] font-bold text-warn-text">
+              {unreplied > 0 ? `${unreplied} to reply` : `${flags.length} comment${flags.length === 1 ? '' : 's'}`}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {open && (
+        <div className="border-t border-line-soft bg-line-soft/30 p-4">
+          {donations.length > 0 && (
+            <>
+              <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">What they donated</div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {grouped.map((g) => {
+                  const c = colorFor(g.category)
+                  return (
+                    <div key={`${g.item}|${g.unit}`} className="flex items-center gap-3 rounded-lg bg-white px-3 py-2">
+                      <span className="h-9 w-1.5 shrink-0 rounded-full" style={{ background: c.accent }} />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-semibold text-ink">{g.item}</div>
+                        <div className="text-[11px] text-faint">
+                          {g.count} time{g.count === 1 ? '' : 's'} · last {formatDateTime(g.last)}
+                        </div>
+                      </div>
+                      <span className="rounded-md px-2.5 py-1 text-xs font-bold" style={{ background: c.bg, color: c.accent }}>
+                        {g.total} {g.unit}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {donations.length > grouped.length && (
+                <div className="mt-2">
+                  <button
+                    onClick={() => setShowAll((v) => !v)}
+                    className="text-[11px] font-semibold text-admin-dark hover:underline"
+                  >
+                    {showAll ? 'Hide' : 'Show'} all {donations.length} entries
+                  </button>
+                  {showAll && (
+                    <div className="mt-2 max-h-56 space-y-1 overflow-y-auto rounded-lg bg-white p-3">
+                      {donations.map((d) => (
+                        <div key={d.id} className="text-xs text-muted">
+                          • {d.item} {d.quantity ? `(${d.quantity} ${d.unit || ''})` : ''} — Brgy. {tidy(d.barangay)} —{' '}
+                          <span className="text-faint">{formatDateTime(d.created_at)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {flags.length > 0 && (
+            <div className={`${donations.length > 0 ? 'mt-4 border-t border-line-soft pt-3' : ''}`}>
+              <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">Comments</div>
+              <div className="space-y-3">
+                {flags.map((f) => (
+                  <div key={f.id}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="rounded-lg bg-warn-bg px-3 py-2 text-[11px] text-warn-text">
+                        "{f.message}"{' '}
+                        <span className="text-faint">— {formatDateTime(f.created_at)}</span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (confirm('Archive this comment? It will move to the Archive tab.')) {
+                            onArchiveFlag(f.id)
+                          }
+                        }}
+                        disabled={busyFlagId === f.id}
+                        className="shrink-0 rounded-lg bg-admin px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-admin-dark disabled:opacity-50"
+                      >
+                        {busyFlagId === f.id ? 'Archiving…' : 'Archive'}
+                      </button>
+                    </div>
+                    <ReplyForm flag={f} onReplied={onReplied} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -349,11 +660,57 @@ export default function ReportsTab() {
   const [flashDistributions, setFlashDistributions] = useState(false)
   const [flashBeneficiaries, setFlashBeneficiaries] = useState(false)
   const [flashStock, setFlashStock] = useState(false)
+  const [itemFilter, setItemFilter] = useState('') // tapped stock item -> show who received it
+  const [stockView, setStockView] = useState('all') // 'all' | 'attention'
+  const [openBarangays, setOpenBarangays] = useState({})
 
   const donationsRef = useRef(null)
   const distributionsRef = useRef(null)
   const beneficiariesRef = useRef(null)
   const stockRef = useRef(null)
+  const rootRef = useRef(null)
+
+  /* When printing (button or Ctrl+P), hide everything on the page except this report,
+     e.g. the admin sidebar, then restore it afterwards. */
+  useEffect(() => {
+    const marked = []
+    function mark(el, attr) {
+      el.setAttribute(attr, '')
+      marked.push([el, attr])
+    }
+    function beforePrint() {
+      let node = rootRef.current
+      while (node && node !== document.documentElement) {
+        mark(node, 'data-print-keep')
+        const parent = node.parentElement
+        if (parent) {
+          Array.from(parent.children).forEach((sib) => {
+            if (sib !== node && !['STYLE', 'SCRIPT', 'LINK', 'HEAD'].includes(sib.tagName)) {
+              mark(sib, 'data-print-hide')
+            }
+          })
+        }
+        node = parent
+      }
+    }
+    function afterPrint() {
+      marked.forEach(([el, attr]) => el.removeAttribute(attr))
+      marked.length = 0
+    }
+    window.addEventListener('beforeprint', beforePrint)
+    window.addEventListener('afterprint', afterPrint)
+    return () => {
+      window.removeEventListener('beforeprint', beforePrint)
+      window.removeEventListener('afterprint', afterPrint)
+      afterPrint()
+    }
+  }, [])
+
+  function showRecipientsOf(itemName) {
+    setItemFilter(itemName)
+    setOpenBeneficiaries({})
+    scrollToSection(beneficiariesRef, setFlashBeneficiaries)
+  }
 
   function scrollToSection(ref, highlightSetter) {
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -400,6 +757,7 @@ export default function ReportsTab() {
 
   const filteredDonations = useMemo(() => {
     return donations.filter((d) => {
+      if (d.status === 'archived') return false
       const created = d.created_at?.slice(0, 10)
       if (dateFrom && created < dateFrom) return false
       if (dateTo && created > dateTo) return false
@@ -431,9 +789,15 @@ export default function ReportsTab() {
 
   /* Group distribution records by beneficiary (serial number) — the serial belongs
      to the household, and one household can receive many different items. */
+  const beneficiaryDistributions = useMemo(() => {
+    if (!itemFilter) return filteredDistributions
+    const key = itemFilter.trim().toLowerCase()
+    return filteredDistributions.filter((d) => String(d.item || '').trim().toLowerCase() === key)
+  }, [filteredDistributions, itemFilter])
+
   const beneficiaryGroups = useMemo(() => {
     const map = {}
-    filteredDistributions.forEach((d) => {
+    beneficiaryDistributions.forEach((d) => {
       const key = d.serial_number || `no-serial-${d.household_head || d.id}`
       if (!map[key]) {
         map[key] = {
@@ -449,7 +813,7 @@ export default function ReportsTab() {
       if (new Date(d.created_at) > new Date(map[key].latest)) map[key].latest = d.created_at
     })
     return Object.values(map).sort((a, b) => new Date(b.latest) - new Date(a.latest))
-  }, [filteredDistributions])
+  }, [beneficiaryDistributions])
 
   const beneficiariesRegisteredCount = beneficiaryGroups.length
 
@@ -485,6 +849,24 @@ export default function ReportsTab() {
       })
       .sort((a, b) => a.category.localeCompare(b.category) || a.item.localeCompare(b.item))
   }, [inventory, givenOutByKey, search])
+
+  const needsAttentionCount = useMemo(
+    () => stockStatus.filter((r) => Number(r.remaining) <= LOW_STOCK_THRESHOLD).length,
+    [stockStatus]
+  )
+
+  const stockGroups = useMemo(() => {
+    const rows =
+      stockView === 'attention'
+        ? stockStatus.filter((r) => Number(r.remaining) <= LOW_STOCK_THRESHOLD)
+        : stockStatus
+    const map = {}
+    rows.forEach((r) => {
+      if (!map[r.category]) map[r.category] = []
+      map[r.category].push(r)
+    })
+    return Object.entries(map)
+  }, [stockStatus, stockView])
 
   const totalItemsGivenOut = useMemo(() => {
     return filteredDistributions.reduce((sum, d) => sum + (Number(d.quantity) || 0), 0)
@@ -559,6 +941,59 @@ export default function ReportsTab() {
     return Object.values(map).sort((a, b) => b.distributions - a.distributions)
   }, [filteredDistributions])
 
+  /* One row per barangay: donations FROM it + aid given TO it (date range applies) */
+  const barangaySummary = useMemo(() => {
+    const officialByKey = {}
+    BARANGAY_POSITIONS.forEach((b) => { officialByKey[b.name.trim().toLowerCase()] = b.name })
+
+    const map = {}
+    function ensure(raw) {
+      const key = String(raw || '').trim().toLowerCase() || 'unspecified'
+      if (!map[key]) {
+        const official = officialByKey[key]
+        map[key] = {
+          key,
+          official: !!official,
+          label: official || (key === 'unspecified' ? 'No barangay recorded' : tidy(String(raw).trim())),
+          donations: 0, confirmed: 0, distributions: 0,
+          households: new Set(), donated: {}, given: {},
+        }
+      }
+      return map[key]
+    }
+    function addItem(bucket, d) {
+      const k = `${String(d.item || '').trim().toLowerCase()}|${d.unit || ''}`
+      if (!bucket[k]) bucket[k] = { item: d.item || '—', unit: d.unit || '', count: 0, total: 0 }
+      bucket[k].count += 1
+      bucket[k].total += Number(d.quantity) || 0
+    }
+
+    filteredDonations.forEach((d) => {
+      const r = ensure(d.barangay)
+      r.donations += 1
+      if (d.status === 'confirmed') r.confirmed += 1
+      addItem(r.donated, d)
+    })
+    filteredDistributions.forEach((d) => {
+      const r = ensure(d.barangay)
+      r.distributions += 1
+      const id = d.serial_number || d.household_head
+      if (id) r.households.add(id)
+      addItem(r.given, d)
+    })
+
+    return Object.values(map)
+      .map((r) => ({
+        ...r,
+        households: r.households.size,
+        donatedItems: Object.values(r.donated).sort((a, b) => b.total - a.total),
+        givenItems: Object.values(r.given).sort((a, b) => b.total - a.total),
+      }))
+      .sort((a, b) => b.donations + b.distributions - (a.donations + a.distributions))
+  }, [filteredDonations, filteredDistributions])
+
+  const unofficialBarangays = barangaySummary.filter((r) => !r.official && r.key !== 'unspecified')
+
   const uniqueHouseholds = useMemo(() => {
     return new Set(
       filteredDistributions
@@ -570,11 +1005,12 @@ export default function ReportsTab() {
   const donorSummaries = useMemo(() => {
     return donors
       .map((donor) => {
-        const theirDonations = donations.filter((d) => d.donor_id === donor.id)
+        const theirDonations = donations.filter((d) => d.donor_id === donor.id && d.status !== 'archived')
         const theirFlags = flags.filter((f) => f.donor_id === donor.id)
         return { donor, donations: theirDonations, flags: theirFlags }
       })
       .filter((s) => s.donations.length > 0 || s.flags.length > 0)
+      .sort((a, b) => new Date(b.donations[0]?.created_at || 0) - new Date(a.donations[0]?.created_at || 0))
   }, [donors, donations, flags])
 
   function exportDistributionsCsv() {
@@ -593,10 +1029,12 @@ export default function ReportsTab() {
   }
 
   function exportBarangaySummaryCsv() {
-    const csv = toCsv(byBarangay, [
-      { key: 'barangay', label: 'Barangay' },
-      { key: 'donations', label: 'Total donations' },
+    const csv = toCsv(barangaySummary, [
+      { key: 'label', label: 'Barangay' },
+      { key: 'donations', label: 'Donations from barangay' },
       { key: 'confirmed', label: 'Confirmed' },
+      { key: 'distributions', label: 'Distribution records' },
+      { key: 'households', label: 'Households given aid' },
     ])
     downloadCsv(`barangay_summary_${dateFrom || 'all'}_${dateTo || 'all'}.csv`, csv)
   }
@@ -629,12 +1067,39 @@ export default function ReportsTab() {
   }
 
   return (
-    <>
+    <div ref={rootRef}>
       <style>{`
+        @page { margin: 10mm; }
         @media print {
+          /* Everything outside the report (sidebar, top bars, background) is hidden */
+          [data-print-hide] { display: none !important; }
+          /* Layout wrappers that contain the report: strip sizing/scroll/background so it flows across pages */
+          [data-print-keep] {
+            display: block !important;
+            position: static !important;
+            width: 100% !important;
+            max-width: none !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            overflow: visible !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: 0 !important;
+            background: none !important;
+            box-shadow: none !important;
+            transform: none !important;
+          }
+          html, body { background: white !important; height: auto !important; overflow: visible !important; }
+          * {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          [class*="shadow-"] { box-shadow: none !important; }
           .no-print { display: none !important; }
-          body { background: white !important; }
           .print-area { box-shadow: none !important; }
+          button { break-inside: avoid; }
+          section h3 { break-after: avoid; }
         }
       `}</style>
 
@@ -655,55 +1120,62 @@ export default function ReportsTab() {
         </div>
       </div>
 
-      <Card className="no-print mb-4 p-5">
-        <div className="flex flex-wrap items-end gap-3">
-          <div>
-            <label className="mb-1 block text-[11px] font-semibold text-muted">From</label>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-admin"
-            />
+      {/* ── Filters: styled like the other report cards ── */}
+      <div className="no-print mb-4 overflow-hidden rounded-card border-t-4 border-t-admin bg-white shadow-[0_2px_6px_rgba(0,0,0,0.08)]">
+        <div className="p-5">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-bold text-ink">Filters</h2>
+            {(dateFrom || dateTo || search) && (
+              <button
+                onClick={() => {
+                  setDateFrom('')
+                  setDateTo('')
+                  setSearch('')
+                }}
+                className="rounded-full bg-admin-light px-3 py-1 text-[11px] font-semibold text-admin-dark hover:bg-admin/20"
+              >
+                Clear filters ✕
+              </button>
+            )}
           </div>
-          <div>
-            <label className="mb-1 block text-[11px] font-semibold text-muted">To</label>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-admin"
-            />
+
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-muted">From</label>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-admin"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-muted">To</label>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-admin"
+              />
+            </div>
+            <div className="min-w-[200px] flex-1">
+              <label className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-muted">
+                Search (serial no., name, barangay, item)
+              </label>
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="e.g. MF-2026-117072 or Rivera"
+                className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-admin"
+              />
+            </div>
           </div>
-          <div className="min-w-[200px] flex-1">
-            <label className="mb-1 block text-[11px] font-semibold text-muted">
-              Search (serial no., name, barangay, item)
-            </label>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="e.g. MF-2026-117072 or Rivera"
-              className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-admin"
-            />
-          </div>
-          {(dateFrom || dateTo || search) && (
-            <button
-              onClick={() => {
-                setDateFrom('')
-                setDateTo('')
-                setSearch('')
-              }}
-              className="text-xs font-semibold text-faint hover:text-admin"
-            >
-              Clear filters
-            </button>
-          )}
         </div>
 
         {/* Quick date-range shortcuts */}
-        <div className="mt-3 flex flex-wrap gap-2 border-t border-line-soft pt-3">
-          <span className="text-[11px] font-semibold text-muted">Quick pick:</span>
+        <div className="flex flex-wrap items-center gap-2 border-t border-line-soft bg-line-soft/30 px-5 py-3">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-muted">Quick pick</span>
           {[
             { key: 'today', label: 'Today' },
             { key: 'yesterday', label: 'Yesterday' },
@@ -714,7 +1186,7 @@ export default function ReportsTab() {
             <button
               key={opt.key}
               onClick={() => applyQuickRange(opt.key)}
-              className="rounded-full border border-line-soft bg-white px-3 py-1 text-[11px] font-semibold text-muted hover:border-admin hover:text-admin-dark"
+              className="rounded-full bg-admin-light px-3 py-1 text-[11px] font-bold text-admin-dark transition hover:bg-admin hover:text-white"
             >
               {opt.label}
             </button>
@@ -723,28 +1195,38 @@ export default function ReportsTab() {
 
         {/* Days that actually have activity — tap to jump straight to that day */}
         {activeDates.length > 0 && (
-          <div className="mt-3 border-t border-line-soft pt-3">
-            <span className="mb-1.5 block text-[11px] font-semibold text-muted">
-              Days with activity — tap to view that day:
+          <div className="border-t border-line-soft px-5 py-3">
+            <span className="mb-2 block text-[10px] font-bold uppercase tracking-wide text-muted">
+              Days with activity — tap to view that day
             </span>
             <div className="flex flex-wrap gap-2">
-              {activeDates.map(([day, count]) => (
-                <button
-                  key={day}
-                  onClick={() => { setDateFrom(day); setDateTo(day) }}
-                  className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition ${
-                    dateFrom === day && dateTo === day
-                      ? 'border-admin bg-admin text-white'
-                      : 'border-line-soft bg-white text-muted hover:border-admin hover:text-admin-dark'
-                  }`}
-                >
-                  {formatDayLabel(day)} · {count}
-                </button>
-              ))}
+              {activeDates.map(([day, count]) => {
+                const active = dateFrom === day && dateTo === day
+                return (
+                  <button
+                    key={day}
+                    onClick={() => { setDateFrom(day); setDateTo(day) }}
+                    className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition ${
+                      active
+                        ? 'border-admin bg-admin text-white'
+                        : 'border-line-soft bg-white text-ink hover:border-admin hover:-translate-y-0.5 hover:shadow-md'
+                    }`}
+                  >
+                    {formatDayLabel(day)}
+                    <span
+                      className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                        active ? 'bg-white/25 text-white' : 'bg-admin-light text-admin-dark'
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
           </div>
         )}
-      </Card>
+      </div>
 
       {loading ? (
         <p className="text-xs text-faint">Loading report data…</p>
@@ -793,6 +1275,13 @@ export default function ReportsTab() {
             </button>
           </div>
 
+          {/* ── Charts: barangay coverage, most stocked items, donations this month ── */}
+          <ReportCharts
+            donations={donations}
+            distributions={filteredDistributions}
+            inventory={inventory}
+          />
+
           {/* ── Stock status: how much is left vs. how much was given out ── */}
           <div ref={stockRef} className="scroll-mt-24">
           <Card
@@ -800,11 +1289,12 @@ export default function ReportsTab() {
               flashStock ? 'ring-4 ring-admin/40' : ''
             }`}
           >
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
               <div>
                 <h2 className="text-sm font-bold text-ink">Stock status</h2>
                 <p className="text-[11px] text-faint">
-                  "Given out" reflects only the selected date range above.
+                  Big number = stock remaining now. "Given out" only counts the selected date range.
+                  <span className="no-print"> Tap an item to see who received it.</span>
                 </p>
               </div>
               <button
@@ -815,42 +1305,116 @@ export default function ReportsTab() {
               </button>
             </div>
 
-            {stockStatus.length === 0 ? (
-              <p className="text-xs text-faint">No inventory items found.</p>
+            <div className="no-print mb-4 flex flex-wrap gap-2">
+              {[
+                { key: 'all', label: `All items · ${stockStatus.length}` },
+                { key: 'attention', label: `Needs attention · ${needsAttentionCount}` },
+              ].map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => setStockView(opt.key)}
+                  className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold transition ${
+                    stockView === opt.key
+                      ? 'border-admin bg-admin text-white'
+                      : 'border-line-soft bg-white text-muted hover:border-admin hover:text-admin-dark'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            {stockGroups.length === 0 ? (
+              <p className="text-xs text-faint">
+                {stockView === 'attention' ? 'Nothing is low or out of stock right now.' : 'No inventory items found.'}
+              </p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[520px] border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-line-soft text-left text-faint">
-                      <th className="py-2 pr-3 font-semibold">Category</th>
-                      <th className="py-2 pr-3 font-semibold">Item</th>
-                      <th className="py-2 pr-3 font-semibold">Stock remaining</th>
-                      <th className="py-2 pr-3 font-semibold">Given out (range)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {stockStatus.map((row) => (
-                      <tr key={row.id} className="border-b border-line-soft/60">
-                        <td className="py-2 pr-3 text-muted">{row.category}</td>
-                        <td className="py-2 pr-3 font-semibold text-ink">{row.item}</td>
-                        <td className="py-2 pr-3">
-                          <span className={row.remaining <= 0 ? 'font-bold text-admin' : 'font-bold text-ink'}>
-                            {row.remaining}
-                          </span>{' '}
-                          <span className="text-faint">{row.unit}</span>
-                          {row.remaining <= 0 && (
-                            <span className="ml-1.5 rounded bg-admin-light px-1.5 py-0.5 text-[10px] font-bold text-admin-dark">
-                              OUT OF STOCK
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-2 pr-3 text-muted">
-                          {row.given_out} {row.unit}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="space-y-5">
+                {stockGroups.map(([category, rows]) => {
+                  const c = colorFor(category)
+                  return (
+                    <section key={category}>
+                      <div
+                        className="mb-2 flex items-center justify-between border-b pb-1.5"
+                        style={{ borderColor: c.border }}
+                      >
+                        <h3
+                          className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide"
+                          style={{ color: c.accent }}
+                        >
+                          <span className="h-2.5 w-2.5 rounded-full" style={{ background: c.accent }} />
+                          {category}
+                        </h3>
+                        <span className="text-[11px] font-semibold text-faint">
+                          {rows.length} item{rows.length === 1 ? '' : 's'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                        {rows.map((row) => {
+                          const out = Number(row.remaining) <= 0
+                          const handled = Number(row.remaining) + Number(row.given_out)
+                          const pct = handled > 0 ? Math.min(100, (Number(row.given_out) / handled) * 100) : 0
+                          return (
+                            <button
+                              key={row.id}
+                              type="button"
+                              onClick={() => showRecipientsOf(row.item)}
+                              className="flex min-h-[150px] flex-col justify-between rounded-lg border border-t-4 p-3 text-left transition hover:-translate-y-0.5 hover:shadow-md"
+                              style={{
+                                background: c.bg,
+                                borderColor: c.border,
+                                borderTopColor: c.accent,
+                              }}
+                            >
+                              <div className="text-sm font-semibold leading-tight text-ink">{row.item}</div>
+
+                              <div className="mt-2">
+                                <div className="text-[10px] font-semibold uppercase tracking-wide text-faint">
+                                  Stock remaining
+                                </div>
+                                <div className="flex items-baseline gap-1.5">
+                                  <span
+                                    className="text-2xl font-bold"
+                                    style={{ color: out ? '#9A9A92' : c.accent }}
+                                  >
+                                    {row.remaining}
+                                  </span>
+                                  <span
+                                    className="rounded-md bg-white px-2 py-0.5 text-[11px] font-bold"
+                                    style={{ color: c.accent }}
+                                  >
+                                    {row.unit}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="mt-2">
+                                <div className="flex justify-between text-[11px]">
+                                  <span className="text-faint">Given out</span>
+                                  <span className="font-bold text-ink">
+                                    {row.given_out} {row.unit}
+                                  </span>
+                                </div>
+                                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white">
+                                  <div
+                                    className="h-full rounded-full"
+                                    style={{ width: `${pct}%`, background: c.accent }}
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="mt-2 flex items-center justify-between gap-1">
+                                <StockBadge qty={Number(row.remaining)} />
+                                <span className="no-print text-[10px] font-semibold text-admin-dark">Who received? →</span>
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </section>
+                  )
+                })}
               </div>
             )}
           </Card>
@@ -864,7 +1428,18 @@ export default function ReportsTab() {
             }`}
           >
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-sm font-bold text-ink">Beneficiaries &amp; what they received</h2>
+              <div>
+                <h2 className="text-sm font-bold text-ink">Beneficiaries &amp; what they received</h2>
+                <p className="no-print text-[11px] text-faint">Tap a household to see everything they received.</p>
+                {itemFilter && (
+                  <button
+                    onClick={() => setItemFilter('')}
+                    className="no-print mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-admin px-3 py-1 text-[11px] font-semibold text-white"
+                  >
+                    Showing who received: {itemFilter} ✕
+                  </button>
+                )}
+              </div>
               <div className="no-print flex items-center gap-3">
                 <button
                   onClick={expandAllBeneficiaries}
@@ -892,22 +1467,24 @@ export default function ReportsTab() {
                 <p className="text-xs text-faint">No distributions match your filters.</p>
               </Card>
             ) : (
-              beneficiaryGroups.map((group) => (
-                <BeneficiarySection
-                  key={group.key}
-                  group={group}
-                  isOpen={!!openBeneficiaries[group.key]}
-                  onToggleSection={() => toggleBeneficiary(group.key)}
-                  openDistId={openDistId}
-                  setOpenDistId={setOpenDistId}
-                  editingDistId={editingDistId}
-                  setEditingDistId={setEditingDistId}
-                  onSaved={() => {
-                    setEditingDistId(null)
-                    loadAll()
-                  }}
-                />
-              ))
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 print:grid-cols-1">
+                {beneficiaryGroups.map((group) => (
+                  <BeneficiarySection
+                    key={group.key}
+                    group={group}
+                    isOpen={!!openBeneficiaries[group.key]}
+                    onToggleSection={() => toggleBeneficiary(group.key)}
+                    openDistId={openDistId}
+                    setOpenDistId={setOpenDistId}
+                    editingDistId={editingDistId}
+                    setEditingDistId={setEditingDistId}
+                    onSaved={() => {
+                      setEditingDistId(null)
+                      loadAll()
+                    }}
+                  />
+                ))}
+              </div>
             )}
           </div>
 
@@ -918,8 +1495,8 @@ export default function ReportsTab() {
             }`}
           >
           <Card className="no-print mb-4 p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-bold text-ink">Donations by barangay</h2>
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-bold text-ink">Barangay summary</h2>
               <button
                 onClick={exportBarangaySummaryCsv}
                 className="text-xs font-semibold text-admin-dark"
@@ -927,17 +1504,30 @@ export default function ReportsTab() {
                 Export CSV ↓
               </button>
             </div>
-            {byBarangay.length === 0 ? (
-              <p className="text-xs text-faint">No donations in this date range.</p>
+            <p className="mb-3 text-[11px] text-faint">
+              <span className="font-semibold text-donor-dark">Donations</span> = came from that barangay.{' '}
+              <span className="font-semibold text-beneficiary-dark">Given aid</span> = distributed to households there.
+              Tap a box to see the items.
+            </p>
+
+            {unofficialBarangays.length > 0 && (
+              <div className="mb-3 rounded-lg bg-warn-bg px-3 py-2 text-[11px] text-warn-text">
+                ⚠ {unofficialBarangays.map((r) => r.label).join(', ')} {unofficialBarangays.length === 1 ? "isn't" : "aren't"} in the
+                official list of 22 barangays. Possible spelling differences, so they're counted separately.
+              </div>
+            )}
+
+            {barangaySummary.length === 0 ? (
+              <p className="text-xs text-faint">No donations or distributions in this date range.</p>
             ) : (
-              <div className="divide-y divide-line-soft">
-                {byBarangay.map((row) => (
-                  <div key={row.barangay} className="flex items-center justify-between py-2">
-                    <div className="text-sm text-ink">Brgy. {row.barangay}</div>
-                    <div className="text-xs text-faint">
-                      {row.donations} total · {row.confirmed} confirmed
-                    </div>
-                  </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                {barangaySummary.map((row) => (
+                  <BarangayBox
+                    key={row.key}
+                    row={row}
+                    isOpen={!!openBarangays[row.key]}
+                    onToggle={() => setOpenBarangays((cur) => ({ ...cur, [row.key]: !cur[row.key] }))}
+                  />
                 ))}
               </div>
             )}
@@ -945,93 +1535,32 @@ export default function ReportsTab() {
           </div>
 
           <Card className="no-print mb-4 p-5">
-            <h2 className="mb-3 text-sm font-bold text-ink">Distributions by barangay</h2>
-            {distributionsByBarangay.length === 0 ? (
-              <p className="text-xs text-faint">No distributions in this date range.</p>
-            ) : (
-              <div className="divide-y divide-line-soft">
-                {distributionsByBarangay.map((row) => (
-                  <div key={row.barangay} className="flex items-center justify-between py-2">
-                    <div className="text-sm text-ink">Brgy. {row.barangay}</div>
-                    <div className="text-xs text-faint">{row.distributions} distributions</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-
-          <Card className="no-print mb-4 p-5">
-            <h2 className="mb-3 text-sm font-bold text-ink">Registered donors & comments</h2>
-            <p className="mb-3 text-xs text-faint">
-              Archive a comment once it's been addressed — it'll move to the Archive tab.
+            <h2 className="text-sm font-bold text-ink">Registered donors &amp; comments</h2>
+            <p className="mb-4 text-[11px] text-faint">
+              Tap a donor to see what they donated. Archive a comment once it's been addressed. It moves to the Archive tab.
             </p>
             {donorSummaries.length === 0 ? (
               <p className="text-xs text-faint">
                 No registered donors with linked donations or comments yet.
               </p>
             ) : (
-              <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 {donorSummaries.map(({ donor, donations: theirDonations, flags: theirFlags }) => (
-                  <div key={donor.id} className="rounded-lg border border-line-soft p-4">
-                    <div className="mb-2 flex items-center gap-3">
-                      <Avatar name={donor.full_name} size="sm" />
-                      <div>
-                        <div className="text-sm font-semibold text-ink">
-                          {donor.full_name || 'Unnamed donor'}
-                        </div>
-                        <div className="text-xs text-faint">{donor.email}</div>
-                      </div>
-                    </div>
-
-                    {theirDonations.length > 0 && (
-                      <div className="mb-2 space-y-1">
-                        {theirDonations.map((d) => (
-                          <div key={d.id} className="text-xs text-muted">
-                            • {d.item} {d.quantity ? `(${d.quantity})` : ''} — Brgy.{' '}
-                            {d.barangay} —{' '}
-                            <span className="text-faint">
-                              {formatDateTime(d.created_at)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {theirFlags.length > 0 && (
-                      <div className="mt-2 space-y-2 border-t border-line-soft pt-2">
-                        {theirFlags.map((f) => (
-                          <div key={f.id}>
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="rounded-lg bg-warn-bg px-3 py-2 text-[11px] text-warn-text">
-                                "{f.message}"{' '}
-                                <span className="text-faint">
-                                  — {formatDateTime(f.created_at)}
-                                </span>
-                              </div>
-                              <button
-                                onClick={() => {
-                                  if (confirm('Archive this comment? It will move to the Archive tab.')) {
-                                    archiveFlag(f.id)
-                                  }
-                                }}
-                                disabled={busyFlagId === f.id}
-                                className="shrink-0 rounded-lg bg-admin px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-admin-dark disabled:opacity-50"
-                              >
-                                {busyFlagId === f.id ? 'Archiving…' : 'Archive'}
-                              </button>
-                            </div>
-                            <ReplyForm flag={f} onReplied={loadAll} />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <DonorCard
+                    key={donor.id}
+                    donor={donor}
+                    donations={theirDonations}
+                    flags={theirFlags}
+                    onArchiveFlag={archiveFlag}
+                    busyFlagId={busyFlagId}
+                    onReplied={loadAll}
+                  />
                 ))}
               </div>
             )}
           </Card>
         </>
       )}
-    </>
+    </div>
   )
 }

@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
 import Badge from '../../components/ui/Badge.jsx'
+import Avatar from '../../components/ui/Avatar.jsx'
 import { supabase } from '../../lib/supabase.js'
+import { BARANGAY_POSITIONS } from '../../components/ui/BarangayMap.jsx'
 
 /* ── Full donation category → item list ── */
 export const CATEGORIES = {
@@ -59,6 +61,283 @@ const DONOR_TYPE_HINTS = {
 }
 
 const OTHER = 'Other (specify)'
+
+/* ── Unit that usually goes with an item (pants → pcs, rice → kg, canned goods → cans …).
+   First matching rule wins; otherwise fall back on the category. ── */
+const UNIT_RULES = [
+  [/^canned |infant formula/, 'cans'],
+  [/bottled water|hand sanitizer|shampoo|conditioner|body wash|peanut butter|cooking oil|soy sauce|vinegar/, 'bottles'],
+  [/socks|sneakers|boots|sandals|shoes|slippers|crutches|^gloves/, 'pairs'],
+  [/toilet paper|medical tape|duct tape|ropes|gauze/, 'rolls'],
+  [/face masks|medical gloves|pain relievers|antacids|cold medicine|tampons|baby cereals|granola|crayons|markers|pencils|pens|shelf-stable milk/, 'boxes'],
+  [/wipes|tissues|trash bags|pads|diapers|paper|batteries|crackers|powdered milk|rehydration|utensils|hand warmers|noodles/, 'packs'],
+  [/\b(rice|pasta|oats|lentils|dried beans|flour|nuts|dried fruit|sugar|salt)\b/, 'kg'],
+]
+
+export function suggestUnit(category, item, customItem = '') {
+  const name = String((item === OTHER ? customItem : item) || '').trim().toLowerCase()
+  if (name) {
+    for (const [pattern, unit] of UNIT_RULES) {
+      if (pattern.test(name)) return unit
+    }
+  }
+  return category === 'Food & Nutrition' ? 'kg' : 'pcs'
+}
+
+function donorDisplayName(d) {
+  return d.full_name || (d.email ? d.email.split('@')[0] : 'Unnamed donor')
+}
+
+export function formatDateTime(iso) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
+
+/* One color family per category (same palette as the Reports tab) */
+const CATEGORY_COLORS = {
+  'Food & Nutrition':              { bg: '#FFF4E5', accent: '#D97706' },
+  'Hygiene & Personal Care':       { bg: '#E8F3FD', accent: '#2563A8' },
+  'Medical & Health Supplies':     { bg: '#FDECEC', accent: '#C0392B' },
+  'Clothing & Linens':             { bg: '#F3ECFB', accent: '#7C3AED' },
+  'Shelter & Survival Gear':       { bg: '#E9F6EC', accent: '#2F855A' },
+  'Education & Child Development': { bg: '#E6F7F6', accent: '#0F8B8D' },
+}
+const FALLBACK_COLOR = { bg: '#EEF1F4', accent: '#4A5568' }
+
+/* Date filter for the Manage donations list */
+const RANGE_OPTIONS = [
+  { key: 'all', label: 'All time' },
+  { key: 'today', label: 'Today' },
+  { key: 'week', label: 'Last 7 days' },
+  { key: 'month', label: 'Last 30 days' },
+]
+
+function toLocalDate(value) {
+  const x = new Date(value)
+  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
+}
+
+/* From/To (YYYY-MM-DD) that each quick button stands for */
+function rangeDates(key) {
+  if (key === 'all') return { from: '', to: '' }
+  const daysBack = key === 'today' ? 0 : key === 'week' ? 6 : 29
+  const from = new Date()
+  from.setDate(from.getDate() - daysBack)
+  return { from: toLocalDate(from), to: toLocalDate(new Date()) }
+}
+
+export function inDates(iso, from, to) {
+  if (!from && !to) return true
+  if (!iso) return false
+  const day = toLocalDate(iso)
+  if (from && day < from) return false
+  if (to && day > to) return false
+  return true
+}
+export function categoryColor(category) {
+  return CATEGORY_COLORS[category] || FALLBACK_COLOR
+}
+
+/* ── Text input that suggests registered donors as the admin types (matches name or email) ── */
+function DonorSuggestInput({
+  label, value, onChange, onPick, donors,
+  placeholder, required, type = 'text',
+}) {
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(0)
+
+  const matches = useMemo(() => {
+    const q = value.trim().toLowerCase()
+    if (!q) return []
+    return donors
+      .filter((d) => {
+        const name = (d.full_name || '').toLowerCase()
+        const email = (d.email || '').toLowerCase()
+        return name.includes(q) || email.includes(q)
+      })
+      .slice(0, 6)
+  }, [donors, value])
+
+  // Hide the list once the typed text is exactly the one donor that matched
+  const exactOnly =
+    matches.length === 1 &&
+    [matches[0].full_name, matches[0].email].some(
+      (v) => (v || '').toLowerCase() === value.trim().toLowerCase()
+    )
+  const showList = open && matches.length > 0 && !exactOnly
+
+  function pick(d) {
+    onPick(d)
+    setOpen(false)
+  }
+
+  function handleKeyDown(e) {
+    if (!showList) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActive((i) => (i + 1) % matches.length)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActive((i) => (i - 1 + matches.length) % matches.length)
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      pick(matches[active] || matches[0])
+    } else if (e.key === 'Escape') {
+      setOpen(false)
+    }
+  }
+
+  return (
+    <div className="relative">
+      <label className="mb-1 block text-xs font-semibold text-muted">{label}</label>
+      <input
+        required={required}
+        type={type}
+        autoComplete="off"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value)
+          setActive(0)
+          setOpen(true)
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onKeyDown={handleKeyDown}
+        className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin"
+      />
+
+      {showList && (
+        <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-lg border border-line-soft bg-white shadow-[0_6px_16px_rgba(0,0,0,0.15)]">
+          <div className="border-b border-line-soft bg-line-soft/40 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-muted">
+            Registered donors
+          </div>
+          {matches.map((d, i) => (
+            <button
+              key={d.id}
+              type="button"
+              // mousedown (not click) so the input doesn't blur before we pick
+              onMouseDown={(e) => {
+                e.preventDefault()
+                pick(d)
+              }}
+              onMouseEnter={() => setActive(i)}
+              className={`flex w-full items-center gap-3 px-3 py-2 text-left transition ${
+                i === active ? 'bg-admin-light' : 'bg-white'
+              }`}
+            >
+              <Avatar name={donorDisplayName(d)} size="sm" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold text-ink">{donorDisplayName(d)}</div>
+                <div className="truncate text-[11px] text-faint">{d.email}</div>
+              </div>
+              <span className="shrink-0 rounded-full bg-donor-light px-2 py-0.5 text-[10px] font-bold text-donor-dark">
+                ✓ Has account
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ── Barangay input that lists the 22 official barangays and filters as you type ── */
+function BarangaySuggestInput({ label, value, onChange, required, size = 'md' }) {
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(0)
+
+  const names = useMemo(
+    () => BARANGAY_POSITIONS.map((b) => b.name).sort((a, b) => a.localeCompare(b)),
+    []
+  )
+  const q = value.trim().toLowerCase()
+  const matches = useMemo(
+    () => names.filter((n) => !q || n.toLowerCase().includes(q)),
+    [names, q]
+  )
+  const isOfficial = names.some((n) => n.toLowerCase() === q)
+  const showList = open && matches.length > 0 && !(matches.length === 1 && isOfficial)
+  const pad = size === 'sm' ? 'px-3 py-2' : 'px-4 py-3'
+
+  function pick(name) {
+    onChange(name)
+    setOpen(false)
+  }
+
+  function handleKeyDown(e) {
+    if (!showList) {
+      if (e.key === 'ArrowDown') setOpen(true)
+      return
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActive((i) => (i + 1) % matches.length)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActive((i) => (i - 1 + matches.length) % matches.length)
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      pick(matches[active] || matches[0])
+    } else if (e.key === 'Escape') {
+      setOpen(false)
+    }
+  }
+
+  return (
+    <div className="relative">
+      <label className="mb-1 block text-xs font-semibold text-muted">{label}</label>
+      <input
+        required={required}
+        autoComplete="off"
+        placeholder="Tap to choose a barangay, or type to search"
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value)
+          setActive(0)
+          setOpen(true)
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onKeyDown={handleKeyDown}
+        className={`w-full rounded-lg border border-line bg-white ${pad} text-sm outline-none focus:border-admin`}
+      />
+
+      {showList && (
+        <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-lg border border-line-soft bg-white shadow-[0_6px_16px_rgba(0,0,0,0.15)]">
+          <div className="sticky top-0 border-b border-line-soft bg-line-soft/60 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-muted">
+            Official barangays · {matches.length}
+          </div>
+          {matches.map((n, i) => (
+            <button
+              key={n}
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault()
+                pick(n)
+              }}
+              onMouseEnter={() => setActive(i)}
+              className={`block w-full px-3 py-2 text-left text-sm text-ink transition ${
+                i === active ? 'bg-admin-light' : 'bg-white'
+              }`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {value.trim() && !isOfficial && !open && (
+        <p className="mt-1 text-[11px] font-semibold text-warn-text">
+          ⚠ Not in the official list of 22 barangays. Check the spelling, or pick from the list.
+        </p>
+      )}
+    </div>
+  )
+}
 
 function CategoryItemFields({ category, item, customItem, onCategory, onItem, onCustomItem }) {
   const itemOptions = category ? [...(CATEGORIES[category] || []), OTHER] : []
@@ -158,8 +437,8 @@ function EditDonationRow({ donation, onCancel, onSaved }) {
           category={form.category}
           item={form.item}
           customItem={form.customItem}
-          onCategory={(v) => setForm((f) => ({ ...f, category: v, item: '', customItem: '' }))}
-          onItem={(v) => update('item', v)}
+          onCategory={(v) => setForm((f) => ({ ...f, category: v, item: '', customItem: '', unit: suggestUnit(v, '') }))}
+          onItem={(v) => setForm((f) => ({ ...f, item: v, unit: suggestUnit(f.category, v, f.customItem) }))}
           onCustomItem={(v) => update('customItem', v)}
         />
 
@@ -186,12 +465,11 @@ function EditDonationRow({ donation, onCancel, onSaved }) {
         </div>
 
         <div className="sm:col-span-2">
-          <label className="mb-1 block text-xs font-semibold text-muted">Barangay</label>
-          <input
+          <BarangaySuggestInput
+            label="Barangay"
+            size="sm"
             value={form.barangay}
-            onChange={(e) => update('barangay', e.target.value)}
-            placeholder="Barangay"
-            className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-admin"
+            onChange={(v) => update('barangay', v)}
           />
         </div>
 
@@ -255,6 +533,160 @@ function EditDonationRow({ donation, onCancel, onSaved }) {
   )
 }
 
+/* ── Date range filter (From / To calendars + quick picks). Shared with the Overview page. ── */
+export function DateRangeFilter({ donations, dateFrom, dateTo, setDateFrom, setDateTo, shown }) {
+  const counts = useMemo(() => {
+    const c = {}
+    RANGE_OPTIONS.forEach((o) => {
+      const { from, to } = rangeDates(o.key)
+      c[o.key] = donations.filter((d) => inDates(d.created_at, from, to)).length
+    })
+    return c
+  }, [donations])
+
+  return (
+    <div className="mb-4 overflow-hidden rounded-lg border border-line-soft">
+      <div className="flex flex-wrap items-end gap-3 p-3">
+        <div>
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-muted">From</label>
+          <input
+            type="date"
+            value={dateFrom}
+            max={dateTo || undefined}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-admin"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-muted">To</label>
+          <input
+            type="date"
+            value={dateTo}
+            min={dateFrom || undefined}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-admin"
+          />
+        </div>
+        {(dateFrom || dateTo) && (
+          <button
+            type="button"
+            onClick={() => { setDateFrom(''); setDateTo('') }}
+            className="rounded-full bg-admin-light px-3 py-1.5 text-[11px] font-semibold text-admin-dark hover:bg-admin/20"
+          >
+            Clear ✕
+          </button>
+        )}
+        <span className="ml-auto text-[11px] font-semibold text-muted">
+          Showing {shown} of {donations.length}
+        </span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 border-t border-line-soft bg-line-soft/40 px-3 py-2.5">
+        <span className="text-[10px] font-bold uppercase tracking-wide text-muted">Quick pick</span>
+        {RANGE_OPTIONS.map((o) => {
+          const { from, to } = rangeDates(o.key)
+          const active = dateFrom === from && dateTo === to
+          return (
+            <button
+              key={o.key}
+              type="button"
+              onClick={() => { setDateFrom(from); setDateTo(to) }}
+              className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-bold transition ${
+                active ? 'bg-admin text-white' : 'bg-admin-light text-admin-dark hover:bg-admin/20'
+              }`}
+            >
+              {o.label}
+              <span
+                className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                  active ? 'bg-white/25 text-white' : 'bg-white text-admin-dark'
+                }`}
+              >
+                {counts[o.key]}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/* ── One donation as a compact tappable box. `actions` (Edit/Archive buttons) is optional. ── */
+export function DonationBox({ d, isOpen, onToggle, actions }) {
+  const c = categoryColor(d.category)
+  return (
+    <div
+      className={`overflow-hidden rounded-card border-t-4 bg-white shadow-[0_2px_6px_rgba(0,0,0,0.08)] ${
+        isOpen ? 'sm:col-span-2 lg:col-span-3' : ''
+      }`}
+      style={{ borderTopColor: c.accent }}
+    >
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onToggle}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onToggle() }}
+        className="cursor-pointer p-3 transition hover:bg-line-soft/40"
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-bold text-ink">{d.item}</div>
+            <div className="truncate text-[11px] text-faint">
+              {d.donor_name || 'Anonymous'} · Brgy. {d.barangay}
+            </div>
+          </div>
+          <span
+            className="shrink-0 rounded-md px-2.5 py-1 text-xs font-bold"
+            style={{ background: c.bg, color: c.accent }}
+          >
+            {d.quantity} {d.unit || ''}
+          </span>
+        </div>
+
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <span className="text-[11px] font-semibold text-muted">🕒 {formatDateTime(d.created_at)}</span>
+          <span className="flex items-center gap-2">
+            <Badge tone={d.status === 'confirmed' ? 'confirmed' : 'pending'}>{d.status}</Badge>
+            <span className="text-xs text-faint">{isOpen ? '▲' : '▼'}</span>
+          </span>
+        </div>
+      </div>
+
+      {isOpen && (
+        <div className="border-t border-line-soft bg-line-soft/30 p-4">
+          <div className="grid grid-cols-1 gap-x-4 gap-y-1 text-xs text-muted sm:grid-cols-2">
+            <div><span className="text-faint">Category:</span> {d.category || '—'}</div>
+            <div>
+              <span className="text-faint">Donor type:</span>{' '}
+              {d.donor_type === 'government' ? 'Government' : d.donor_type ? 'Non-government' : '—'}
+            </div>
+            <div><span className="text-faint">Barangay:</span> {d.barangay || '—'}</div>
+            <div><span className="text-faint">Recorded by:</span> {d.recorded_by || '—'}</div>
+            <div><span className="text-faint">Date &amp; time:</span> {formatDateTime(d.created_at)}</div>
+            <div><span className="text-faint">Donor identity:</span> {d.is_private ? 'Private' : 'Public'}</div>
+          </div>
+
+          {d.description && (
+            <div className="mt-2 rounded-lg bg-white px-3 py-2 text-xs italic text-muted">
+              "{d.description}"
+            </div>
+          )}
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {d.category && <Badge tone="neutral">{d.category}</Badge>}
+            {d.donor_type && (
+              <Badge tone={d.donor_type === 'government' ? 'government' : 'nonGovernment'}>
+                {d.donor_type === 'government' ? 'Government' : 'Non-government'}
+              </Badge>
+            )}
+            {actions && <div className="ml-auto flex gap-2">{actions}</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function DonationsTab() {
   const [form, setForm] = useState({
     donorName: '',
@@ -271,11 +703,16 @@ export default function DonationsTab() {
     isPrivate: false,
   })
   const [status, setStatus] = useState('')
+  const [unitTouched, setUnitTouched] = useState(false) // true once staff picks a unit by hand
 
   const [donations, setDonations] = useState([])
+  const [donors, setDonors] = useState([]) // registered donor accounts, used for suggestions
   const [listLoading, setListLoading] = useState(true)
   const [editingId, setEditingId] = useState(null)
   const [busyId, setBusyId] = useState(null)
+  const [openId, setOpenId] = useState(null) // which donation box is expanded
+  const [dateFrom, setDateFrom] = useState('') // date filter for Manage donations
+  const [dateTo, setDateTo] = useState('')
 
   async function loadDonations() {
     setListLoading(true)
@@ -288,24 +725,80 @@ export default function DonationsTab() {
     setListLoading(false)
   }
 
+  async function loadDonors() {
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('role', 'donor')
+      .order('full_name', { ascending: true })
+    setDonors(data || [])
+  }
+
   useEffect(() => {
     loadDonations()
+    loadDonors()
   }, [])
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }))
   }
 
+  /* Unit recommended for the chosen item (pants → pcs, rice → kg …) */
+  const suggestedUnit = form.category ? suggestUnit(form.category, form.item, form.customItem) : ''
+
+  function handleCategoryChange(v) {
+    setUnitTouched(false)
+    setForm((f) => ({ ...f, category: v, item: '', customItem: '', unit: suggestUnit(v, '') }))
+  }
+
+  function handleItemChange(v) {
+    setUnitTouched(false)
+    setForm((f) => ({ ...f, item: v, customItem: '', unit: suggestUnit(f.category, v, '') }))
+  }
+
+  function handleCustomItemChange(v) {
+    setForm((f) => ({
+      ...f,
+      customItem: v,
+      unit: unitTouched ? f.unit : suggestUnit(f.category, OTHER, v),
+    }))
+  }
+
+  /* The donor account that matches the typed email (if any) */
+  const matchedDonor = useMemo(() => {
+    const email = form.donorEmail.trim().toLowerCase()
+    if (!email) return null
+    return donors.find((d) => (d.email || '').toLowerCase() === email) || null
+  }, [donors, form.donorEmail])
+
+  /* Their earlier donations, for a quick "returning donor" summary */
+  const donorHistory = useMemo(() => {
+    if (!matchedDonor) return []
+    return donations.filter((d) => d.donor_id === matchedDonor.id)
+  }, [donations, matchedDonor])
+
+  /* Picking a suggestion fills in everything we already know about that donor */
+  function pickDonor(d) {
+    setForm((f) => ({
+      ...f,
+      donorName: donorDisplayName(d),
+      donorEmail: d.email || '',
+      donorType: DONOR_TYPES.some((t) => t.value === d.donor_type) ? d.donor_type : f.donorType,
+      barangay: f.barangay || d.barangay || '',
+    }))
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     setStatus('saving')
 
-    let donorId = null
-    if (form.donorEmail) {
+    // Prefer the donor picked from suggestions; otherwise look the email up
+    let donorId = matchedDonor?.id ?? null
+    if (!donorId && form.donorEmail.trim()) {
       const { data: donor } = await supabase
         .from('profiles')
         .select('id')
-        .eq('email', form.donorEmail)
+        .eq('email', form.donorEmail.trim())
         .single()
       donorId = donor?.id ?? null
     }
@@ -329,6 +822,7 @@ export default function DonationsTab() {
 
     setStatus(error ? 'error' : 'success')
     if (!error) {
+      setUnitTouched(false)
       setForm({
         donorName: '',
         donorEmail: '',
@@ -346,6 +840,11 @@ export default function DonationsTab() {
       loadDonations()
     }
   }
+
+  const visibleDonations = useMemo(
+    () => donations.filter((d) => inDates(d.created_at, dateFrom, dateTo)),
+    [donations, dateFrom, dateTo]
+  )
 
   async function archiveDonation(id) {
     setBusyId(id)
@@ -368,24 +867,55 @@ export default function DonationsTab() {
         <h2 className="mb-4 text-base font-bold text-ink">Record donation entry</h2>
         <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-semibold text-muted">Donor name</label>
-            <input
+            <DonorSuggestInput
+              label="Donor name"
               required
-              placeholder="e.g. Name"
+              placeholder="Start typing — registered donors will show up"
               value={form.donorName}
-              onChange={(e) => update('donorName', e.target.value)}
-              className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin"
+              onChange={(v) => update('donorName', v)}
+              onPick={pickDonor}
+              donors={donors}
             />
           </div>
 
           <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-semibold text-muted">Donor email (optional — links to their dashboard)</label>
-            <input
-              placeholder="e.g. email.com"
+            <DonorSuggestInput
+              label="Donor email (optional — links to their dashboard)"
+              type="email"
+              placeholder="e.g. name@email.com"
               value={form.donorEmail}
-              onChange={(e) => update('donorEmail', e.target.value)}
-              className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin"
+              onChange={(v) => update('donorEmail', v)}
+              onPick={pickDonor}
+              donors={donors}
             />
+
+            {matchedDonor && (
+              <div className="mt-2 flex items-center gap-3 rounded-lg border border-donor-light bg-donor-light px-3 py-2.5">
+                <Avatar name={donorDisplayName(matchedDonor)} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-bold text-donor-dark">
+                    ✓ Registered donor — this donation will appear on their dashboard
+                  </div>
+                  <div className="truncate text-[11px] text-muted">
+                    {donorDisplayName(matchedDonor)} · {matchedDonor.email}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right text-[11px] text-muted">
+                  <div className="font-bold text-donor-dark">
+                    {donorHistory.length} previous donation{donorHistory.length === 1 ? '' : 's'}
+                  </div>
+                  {donorHistory[0]?.created_at && (
+                    <div>Last: {new Date(donorHistory[0].created_at).toLocaleDateString()}</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!matchedDonor && form.donorEmail.includes('@') && (
+              <div className="mt-2 rounded-lg bg-warn-bg px-3 py-2 text-[11px] text-warn-text">
+                No registered account uses this email. The donation will still be recorded, but it won't be linked to a donor dashboard.
+              </div>
+            )}
           </div>
 
           <div>
@@ -393,7 +923,7 @@ export default function DonationsTab() {
             <select
               required
               value={form.category}
-              onChange={(e) => setForm((f) => ({ ...f, category: e.target.value, item: '', customItem: '' }))}
+              onChange={(e) => handleCategoryChange(e.target.value)}
               className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin"
             >
               <option value="" disabled>Select category</option>
@@ -408,7 +938,7 @@ export default function DonationsTab() {
               required
               value={form.item}
               disabled={!form.category}
-              onChange={(e) => update('item', e.target.value)}
+              onChange={(e) => handleItemChange(e.target.value)}
               className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin disabled:bg-line-soft disabled:text-faint"
             >
               <option value="" disabled>{form.category ? 'Select item' : 'Pick a category first'}</option>
@@ -425,7 +955,7 @@ export default function DonationsTab() {
                 required
                 placeholder="Type the item name"
                 value={form.customItem}
-                onChange={(e) => update('customItem', e.target.value)}
+                onChange={(e) => handleCustomItemChange(e.target.value)}
                 className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin"
               />
             </div>
@@ -449,21 +979,37 @@ export default function DonationsTab() {
             <select
               required
               value={form.unit}
-              onChange={(e) => update('unit', e.target.value)}
+              onChange={(e) => {
+                setUnitTouched(true)
+                update('unit', e.target.value)
+              }}
               className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin"
             >
               {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
             </select>
+            {form.item && suggestedUnit && form.unit === suggestedUnit && (
+              <p className="mt-1 text-xs text-faint">✨ Unit suggested from the item. Change it if needed.</p>
+            )}
+            {form.item && suggestedUnit && form.unit !== suggestedUnit && (
+              <button
+                type="button"
+                onClick={() => {
+                  setUnitTouched(false)
+                  update('unit', suggestedUnit)
+                }}
+                className="mt-1 text-xs font-semibold text-admin-dark hover:underline"
+              >
+                Suggested: {suggestedUnit}. Tap to use it
+              </button>
+            )}
           </div>
 
           <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-semibold text-muted">Barangay</label>
-            <input
+            <BarangaySuggestInput
+              label="Barangay"
               required
-              placeholder="e.g. Barangay"
               value={form.barangay}
-              onChange={(e) => update('barangay', e.target.value)}
-              className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin"
+              onChange={(v) => update('barangay', v)}
             />
           </div>
 
@@ -544,72 +1090,72 @@ export default function DonationsTab() {
           <p className="text-sm text-faint">No donation entries yet.</p>
         )}
 
-        <div className="space-y-3">
-          {donations.map((d) =>
-            editingId === d.id ? (
-              <EditDonationRow
-                key={d.id}
-                donation={d}
-                onCancel={() => setEditingId(null)}
-                onSaved={() => {
-                  setEditingId(null)
-                  loadDonations()
-                }}
-              />
-            ) : (
-              <div
-                key={d.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line-soft px-4 py-3"
-              >
-                <div>
-                  <div className="text-sm font-semibold text-ink">
-                    {d.item} {d.quantity ? `— ${d.quantity} ${d.unit || ''}` : ''}
-                  </div>
-                  <div className="text-sm text-faint">
-                    {d.donor_name || 'Anonymous'} · Brgy. {d.barangay} ·{' '}
-                    {new Date(d.created_at).toLocaleDateString()}
-                    {d.is_private ? ' · Private' : ''}
-                    {d.recorded_by ? ` · Recorded by ${d.recorded_by}` : ''}
-                  </div>
-                  {d.description && (
-                    <div className="mt-1 text-sm italic text-faint">"{d.description}"</div>
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {d.category && <Badge tone="neutral">{d.category}</Badge>}
-                  {d.donor_type && (
-                    <Badge tone={d.donor_type === 'government' ? 'government' : 'nonGovernment'}>
-                      {d.donor_type === 'government' ? 'Government' : 'Non-government'}
-                    </Badge>
-                  )}
-                  <Badge tone={d.status === 'confirmed' ? 'confirmed' : 'pending'}>
-                    {d.status}
-                  </Badge>
-                  <button
-                    onClick={() => setEditingId(d.id)}
-                    className="rounded-lg bg-line-soft px-3 py-1.5 text-xs font-semibold text-ink hover:bg-line"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (
-                        confirm(
-                          'Archive this donation? It will be removed from the donor dashboard and public feed.'
-                        )
-                      ) {
-                        archiveDonation(d.id)
-                      }
+        {donations.length > 0 && (
+          <DateRangeFilter
+            donations={donations}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            setDateFrom={setDateFrom}
+            setDateTo={setDateTo}
+            shown={visibleDonations.length}
+          />
+        )}
+
+        {!listLoading && donations.length > 0 && visibleDonations.length === 0 && (
+          <p className="text-sm text-faint">No donations in this period.</p>
+        )}
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {visibleDonations.map((d) => {
+            if (editingId === d.id) {
+              return (
+                <div key={d.id} className="sm:col-span-2 lg:col-span-3">
+                  <EditDonationRow
+                    donation={d}
+                    onCancel={() => setEditingId(null)}
+                    onSaved={() => {
+                      setEditingId(null)
+                      loadDonations()
                     }}
-                    disabled={busyId === d.id}
-                    className="rounded-lg bg-admin px-3 py-1.5 text-xs font-semibold text-white hover:bg-admin-dark disabled:opacity-50"
-                  >
-                    {busyId === d.id ? 'Archiving…' : 'Archive'}
-                  </button>
+                  />
                 </div>
-              </div>
+              )
+            }
+
+            return (
+              <DonationBox
+                key={d.id}
+                d={d}
+                isOpen={openId === d.id}
+                onToggle={() => setOpenId((cur) => (cur === d.id ? null : d.id))}
+                actions={
+                  <>
+                    <button
+                      onClick={() => setEditingId(d.id)}
+                      className="rounded-lg bg-line-soft px-3 py-1.5 text-xs font-semibold text-ink hover:bg-line"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (
+                          confirm(
+                            'Archive this donation? It will be removed from the donor dashboard and public feed.'
+                          )
+                        ) {
+                          archiveDonation(d.id)
+                        }
+                      }}
+                      disabled={busyId === d.id}
+                      className="rounded-lg bg-admin px-3 py-1.5 text-xs font-semibold text-white hover:bg-admin-dark disabled:opacity-50"
+                    >
+                      {busyId === d.id ? 'Archiving…' : 'Archive'}
+                    </button>
+                  </>
+                }
+              />
             )
-          )}
+          })}
         </div>
       </Card>
     </>

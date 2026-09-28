@@ -22,7 +22,7 @@ const BARANGAYS = [
   'Alae', 'Damilag', 'Dahilayan', 'Dicklum', 'Guilang-guilang', 'Kalugmanan',
   'Lindaban', 'Lingion', 'Lunocan', 'Maluko', 'Mambatangan', 'Mampayag',
   'Minsuro', 'San Miguel', 'Sankanan', 'Santiago', 'Sinaad', 'Tankulan',
-  'Ticala', 'Diclum', 'Agusan Canyon', 'Sampiano',
+  'Ticala', 'Mantibugao', 'Agusan Canyon', 'Sampiano',
 ]
 
 const emptyMember = { name: '', relation: '', age: '', sex: '', occupation: '' }
