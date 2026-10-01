@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
 import Avatar from '../../components/ui/Avatar.jsx'
@@ -656,68 +656,15 @@ export default function ReportsTab() {
   const [openDistId, setOpenDistId] = useState(null)
   const [editingDistId, setEditingDistId] = useState(null)
   const [openBeneficiaries, setOpenBeneficiaries] = useState({})
-  const [flashDonations, setFlashDonations] = useState(false)
-  const [flashDistributions, setFlashDistributions] = useState(false)
-  const [flashBeneficiaries, setFlashBeneficiaries] = useState(false)
-  const [flashStock, setFlashStock] = useState(false)
   const [itemFilter, setItemFilter] = useState('') // tapped stock item -> show who received it
   const [stockView, setStockView] = useState('all') // 'all' | 'attention'
   const [openBarangays, setOpenBarangays] = useState({})
-
-  const donationsRef = useRef(null)
-  const distributionsRef = useRef(null)
-  const beneficiariesRef = useRef(null)
-  const stockRef = useRef(null)
-  const rootRef = useRef(null)
-
-  /* When printing (button or Ctrl+P), hide everything on the page except this report,
-     e.g. the admin sidebar, then restore it afterwards. */
-  useEffect(() => {
-    const marked = []
-    function mark(el, attr) {
-      el.setAttribute(attr, '')
-      marked.push([el, attr])
-    }
-    function beforePrint() {
-      let node = rootRef.current
-      while (node && node !== document.documentElement) {
-        mark(node, 'data-print-keep')
-        const parent = node.parentElement
-        if (parent) {
-          Array.from(parent.children).forEach((sib) => {
-            if (sib !== node && !['STYLE', 'SCRIPT', 'LINK', 'HEAD'].includes(sib.tagName)) {
-              mark(sib, 'data-print-hide')
-            }
-          })
-        }
-        node = parent
-      }
-    }
-    function afterPrint() {
-      marked.forEach(([el, attr]) => el.removeAttribute(attr))
-      marked.length = 0
-    }
-    window.addEventListener('beforeprint', beforePrint)
-    window.addEventListener('afterprint', afterPrint)
-    return () => {
-      window.removeEventListener('beforeprint', beforePrint)
-      window.removeEventListener('afterprint', afterPrint)
-      afterPrint()
-    }
-  }, [])
+  const [activeTab, setActiveTab] = useState('charts') // 'charts' | 'stock' | 'beneficiaries' | 'barangays' | 'donors'
 
   function showRecipientsOf(itemName) {
     setItemFilter(itemName)
     setOpenBeneficiaries({})
-    scrollToSection(beneficiariesRef, setFlashBeneficiaries)
-  }
-
-  function scrollToSection(ref, highlightSetter) {
-    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    if (highlightSetter) {
-      highlightSetter(true)
-      setTimeout(() => highlightSetter(false), 1200)
-    }
+    setActiveTab('beneficiaries')
   }
 
   async function loadAll() {
@@ -787,8 +734,13 @@ export default function ReportsTab() {
     })
   }, [dateFilteredDistributions, search])
 
-  /* Group distribution records by beneficiary (serial number) — the serial belongs
-     to the household, and one household can receive many different items. */
+  /* Group distribution records by beneficiary NAME (not serial number) — the same
+     person is often re-registered with a new serial each visit if staff don't look
+     them up first, so matching by name keeps one card per real household. */
+  function normName(s) {
+    return String(s || '').trim().toLowerCase().replace(/\s+/g, ' ')
+  }
+
   const beneficiaryDistributions = useMemo(() => {
     if (!itemFilter) return filteredDistributions
     const key = itemFilter.trim().toLowerCase()
@@ -798,19 +750,29 @@ export default function ReportsTab() {
   const beneficiaryGroups = useMemo(() => {
     const map = {}
     beneficiaryDistributions.forEach((d) => {
-      const key = d.serial_number || `no-serial-${d.household_head || d.id}`
+      const key = normName(d.household_head) || `no-name-${d.id}`
       if (!map[key]) {
         map[key] = {
           key,
-          serial: d.serial_number || '',
           household_head: d.household_head,
           barangay: d.barangay,
           latest: d.created_at,
+          earliest: d.created_at,
+          serial: d.serial_number || '',
           items: [],
         }
       }
       map[key].items.push(d)
-      if (new Date(d.created_at) > new Date(map[key].latest)) map[key].latest = d.created_at
+      if (new Date(d.created_at) > new Date(map[key].latest)) {
+        map[key].latest = d.created_at
+        map[key].household_head = d.household_head
+        map[key].barangay = d.barangay
+      }
+      // Keep the serial from this person's very first visit as their one, canonical number.
+      if (new Date(d.created_at) < new Date(map[key].earliest)) {
+        map[key].earliest = d.created_at
+        if (d.serial_number) map[key].serial = d.serial_number
+      }
     })
     return Object.values(map).sort((a, b) => new Date(b.latest) - new Date(a.latest))
   }, [beneficiaryDistributions])
@@ -1067,39 +1029,12 @@ export default function ReportsTab() {
   }
 
   return (
-    <div ref={rootRef}>
+    <>
       <style>{`
-        @page { margin: 10mm; }
         @media print {
-          /* Everything outside the report (sidebar, top bars, background) is hidden */
-          [data-print-hide] { display: none !important; }
-          /* Layout wrappers that contain the report: strip sizing/scroll/background so it flows across pages */
-          [data-print-keep] {
-            display: block !important;
-            position: static !important;
-            width: 100% !important;
-            max-width: none !important;
-            height: auto !important;
-            min-height: 0 !important;
-            max-height: none !important;
-            overflow: visible !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            border: 0 !important;
-            background: none !important;
-            box-shadow: none !important;
-            transform: none !important;
-          }
-          html, body { background: white !important; height: auto !important; overflow: visible !important; }
-          * {
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
-          [class*="shadow-"] { box-shadow: none !important; }
           .no-print { display: none !important; }
+          body { background: white !important; }
           .print-area { box-shadow: none !important; }
-          button { break-inside: avoid; }
-          section h3 { break-after: avoid; }
         }
       `}</style>
 
@@ -1120,62 +1055,55 @@ export default function ReportsTab() {
         </div>
       </div>
 
-      {/* ── Filters: styled like the other report cards ── */}
-      <div className="no-print mb-4 overflow-hidden rounded-card border-t-4 border-t-admin bg-white shadow-[0_2px_6px_rgba(0,0,0,0.08)]">
-        <div className="p-5">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-bold text-ink">Filters</h2>
-            {(dateFrom || dateTo || search) && (
-              <button
-                onClick={() => {
-                  setDateFrom('')
-                  setDateTo('')
-                  setSearch('')
-                }}
-                className="rounded-full bg-admin-light px-3 py-1 text-[11px] font-semibold text-admin-dark hover:bg-admin/20"
-              >
-                Clear filters ✕
-              </button>
-            )}
+      <Card className="no-print mb-4 p-5">
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="mb-1 block text-[11px] font-semibold text-muted">From</label>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-admin"
+            />
           </div>
-
-          <div className="flex flex-wrap items-end gap-3">
-            <div>
-              <label className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-muted">From</label>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-admin"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-muted">To</label>
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-admin"
-              />
-            </div>
-            <div className="min-w-[200px] flex-1">
-              <label className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-muted">
-                Search (serial no., name, barangay, item)
-              </label>
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="e.g. MF-2026-117072 or Rivera"
-                className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-admin"
-              />
-            </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-semibold text-muted">To</label>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-admin"
+            />
           </div>
+          <div className="min-w-[200px] flex-1">
+            <label className="mb-1 block text-[11px] font-semibold text-muted">
+              Search (serial no., name, barangay, item)
+            </label>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="e.g. MF-2026-117072 or Rivera"
+              className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-admin"
+            />
+          </div>
+          {(dateFrom || dateTo || search) && (
+            <button
+              onClick={() => {
+                setDateFrom('')
+                setDateTo('')
+                setSearch('')
+              }}
+              className="text-xs font-semibold text-faint hover:text-admin"
+            >
+              Clear filters
+            </button>
+          )}
         </div>
 
         {/* Quick date-range shortcuts */}
-        <div className="flex flex-wrap items-center gap-2 border-t border-line-soft bg-line-soft/30 px-5 py-3">
-          <span className="text-[10px] font-bold uppercase tracking-wide text-muted">Quick pick</span>
+        <div className="mt-3 flex flex-wrap gap-2 border-t border-line-soft pt-3">
+          <span className="text-[11px] font-semibold text-muted">Quick pick:</span>
           {[
             { key: 'today', label: 'Today' },
             { key: 'yesterday', label: 'Yesterday' },
@@ -1186,7 +1114,7 @@ export default function ReportsTab() {
             <button
               key={opt.key}
               onClick={() => applyQuickRange(opt.key)}
-              className="rounded-full bg-admin-light px-3 py-1 text-[11px] font-bold text-admin-dark transition hover:bg-admin hover:text-white"
+              className="rounded-full border border-line-soft bg-white px-3 py-1 text-[11px] font-semibold text-muted hover:border-admin hover:text-admin-dark"
             >
               {opt.label}
             </button>
@@ -1195,100 +1123,91 @@ export default function ReportsTab() {
 
         {/* Days that actually have activity — tap to jump straight to that day */}
         {activeDates.length > 0 && (
-          <div className="border-t border-line-soft px-5 py-3">
-            <span className="mb-2 block text-[10px] font-bold uppercase tracking-wide text-muted">
-              Days with activity — tap to view that day
+          <div className="mt-3 border-t border-line-soft pt-3">
+            <span className="mb-1.5 block text-[11px] font-semibold text-muted">
+              Days with activity — tap to view that day:
             </span>
             <div className="flex flex-wrap gap-2">
-              {activeDates.map(([day, count]) => {
-                const active = dateFrom === day && dateTo === day
-                return (
-                  <button
-                    key={day}
-                    onClick={() => { setDateFrom(day); setDateTo(day) }}
-                    className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition ${
-                      active
-                        ? 'border-admin bg-admin text-white'
-                        : 'border-line-soft bg-white text-ink hover:border-admin hover:-translate-y-0.5 hover:shadow-md'
-                    }`}
-                  >
-                    {formatDayLabel(day)}
-                    <span
-                      className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
-                        active ? 'bg-white/25 text-white' : 'bg-admin-light text-admin-dark'
-                      }`}
-                    >
-                      {count}
-                    </span>
-                  </button>
-                )
-              })}
+              {activeDates.map(([day, count]) => (
+                <button
+                  key={day}
+                  onClick={() => { setDateFrom(day); setDateTo(day) }}
+                  className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition ${
+                    dateFrom === day && dateTo === day
+                      ? 'border-admin bg-admin text-white'
+                      : 'border-line-soft bg-white text-muted hover:border-admin hover:text-admin-dark'
+                  }`}
+                >
+                  {formatDayLabel(day)} · {count}
+                </button>
+              ))}
             </div>
           </div>
         )}
-      </div>
+      </Card>
 
       {loading ? (
         <p className="text-xs text-faint">Loading report data…</p>
       ) : (
         <>
+          {/* ── Summary numbers (always visible, not tabs) ── */}
           <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4 print:grid-cols-4">
-            <button
-              onClick={() => {
-                setOpenBeneficiaries({})
-                scrollToSection(donationsRef, setFlashDonations)
-              }}
-              className="no-print-hover rounded-card bg-white p-5 text-left shadow-[0_2px_6px_rgba(0,0,0,0.06)] transition hover:-translate-y-0.5 hover:shadow-[0_6px_16px_rgba(0,0,0,0.12)] active:translate-y-0"
-            >
+            <div className="rounded-card bg-white p-5 shadow-[0_2px_6px_rgba(0,0,0,0.06)]">
               <div className="text-xs text-faint">Donations in range</div>
               <div className="mt-1 text-2xl font-bold text-ink">{filteredDonations.length}</div>
-              <div className="mt-1 text-[10px] font-semibold text-admin-dark">Tap to view ↓</div>
-            </button>
-            <button
-              onClick={() => scrollToSection(beneficiariesRef, setFlashDistributions)}
-              className="no-print-hover rounded-card bg-white p-5 text-left shadow-[0_2px_6px_rgba(0,0,0,0.06)] transition hover:-translate-y-0.5 hover:shadow-[0_6px_16px_rgba(0,0,0,0.12)] active:translate-y-0"
-            >
+            </div>
+            <div className="rounded-card bg-white p-5 shadow-[0_2px_6px_rgba(0,0,0,0.06)]">
               <div className="text-xs text-faint">Distribution records</div>
-              <div className="mt-1 text-2xl font-bold text-ink">
-                {filteredDistributions.length}
-              </div>
-              <div className="mt-1 text-[10px] font-semibold text-admin-dark">Tap to view ↓</div>
-            </button>
-            <button
-              onClick={() => {
-                expandAllBeneficiaries()
-                scrollToSection(beneficiariesRef, setFlashBeneficiaries)
-              }}
-              className="no-print-hover rounded-card bg-white p-5 text-left shadow-[0_2px_6px_rgba(0,0,0,0.06)] transition hover:-translate-y-0.5 hover:shadow-[0_6px_16px_rgba(0,0,0,0.12)] active:translate-y-0"
-            >
+              <div className="mt-1 text-2xl font-bold text-ink">{filteredDistributions.length}</div>
+            </div>
+            <div className="rounded-card bg-white p-5 shadow-[0_2px_6px_rgba(0,0,0,0.06)]">
               <div className="text-xs text-faint">Beneficiaries registered</div>
               <div className="mt-1 text-2xl font-bold text-ink">{beneficiariesRegisteredCount}</div>
-              <div className="mt-1 text-[10px] font-semibold text-admin-dark">Tap to view ↓</div>
-            </button>
-            <button
-              onClick={() => scrollToSection(stockRef, setFlashStock)}
-              className="no-print-hover rounded-card bg-white p-5 text-left shadow-[0_2px_6px_rgba(0,0,0,0.06)] transition hover:-translate-y-0.5 hover:shadow-[0_6px_16px_rgba(0,0,0,0.12)] active:translate-y-0"
-            >
+            </div>
+            <div className="rounded-card bg-white p-5 shadow-[0_2px_6px_rgba(0,0,0,0.06)]">
               <div className="text-xs text-faint">Total items given out</div>
               <div className="mt-1 text-2xl font-bold text-ink">{totalItemsGivenOut}</div>
-              <div className="mt-1 text-[10px] font-semibold text-admin-dark">Tap to view stock ↓</div>
-            </button>
+            </div>
+          </div>
+
+          {/* ── Tabs: only one section shows at a time ── */}
+          <div className="no-print mb-4 flex flex-wrap gap-2 border-b border-line-soft pb-3">
+            {[
+              { key: 'charts', label: 'Charts & insights' },
+              { key: 'stock', label: 'Stock status' },
+              { key: 'beneficiaries', label: 'Beneficiaries' },
+              { key: 'barangays', label: 'Barangay summary' },
+              { key: 'donors', label: 'Donors & comments' },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => {
+                  setActiveTab(tab.key)
+                  if (tab.key === 'beneficiaries') setItemFilter('')
+                }}
+                className={`rounded-full px-4 py-2 text-xs font-bold transition ${
+                  activeTab === tab.key
+                    ? 'bg-admin text-white'
+                    : 'bg-white text-muted hover:bg-admin-light hover:text-admin-dark'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
 
           {/* ── Charts: barangay coverage, most stocked items, donations this month ── */}
-          <ReportCharts
-            donations={donations}
-            distributions={filteredDistributions}
-            inventory={inventory}
-          />
+          <div className={`rounded-card print:block ${activeTab === 'charts' ? 'block' : 'hidden'}`}>
+            <ReportCharts
+              donations={donations}
+              distributions={filteredDistributions}
+              inventory={inventory}
+            />
+          </div>
 
           {/* ── Stock status: how much is left vs. how much was given out ── */}
-          <div ref={stockRef} className="scroll-mt-24">
-          <Card
-            className={`mb-6 p-5 print-area transition-shadow duration-500 ${
-              flashStock ? 'ring-4 ring-admin/40' : ''
-            }`}
-          >
+          <div className={`print:block ${activeTab === 'stock' ? 'block' : 'hidden'}`}>
+          <Card className="mb-6 p-5 print-area">
             <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
               <div>
                 <h2 className="text-sm font-bold text-ink">Stock status</h2>
@@ -1421,12 +1340,7 @@ export default function ReportsTab() {
           </div>
 
           {/* ── Distributions grouped by beneficiary (the serial number is theirs) ── */}
-          <div
-            ref={beneficiariesRef}
-            className={`mb-6 scroll-mt-24 rounded-card transition-shadow duration-500 ${
-              flashBeneficiaries || flashDistributions ? 'ring-4 ring-admin/40' : ''
-            }`}
-          >
+          <div className={`mb-6 rounded-card print:block ${activeTab === 'beneficiaries' ? 'block' : 'hidden'}`}>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h2 className="text-sm font-bold text-ink">Beneficiaries &amp; what they received</h2>
@@ -1488,13 +1402,8 @@ export default function ReportsTab() {
             )}
           </div>
 
-          <div
-            ref={donationsRef}
-            className={`scroll-mt-24 rounded-card transition-shadow duration-500 ${
-              flashDonations ? 'ring-4 ring-admin/40' : ''
-            }`}
-          >
-          <Card className="no-print mb-4 p-5">
+          <div className={`rounded-card print:block ${activeTab === 'barangays' ? 'block' : 'hidden'}`}>
+          <Card className="mb-4 p-5">
             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-sm font-bold text-ink">Barangay summary</h2>
               <button
@@ -1534,7 +1443,8 @@ export default function ReportsTab() {
           </Card>
           </div>
 
-          <Card className="no-print mb-4 p-5">
+          <div className={`rounded-card print:block ${activeTab === 'donors' ? 'block' : 'hidden'}`}>
+          <Card className="mb-4 p-5">
             <h2 className="text-sm font-bold text-ink">Registered donors &amp; comments</h2>
             <p className="mb-4 text-[11px] text-faint">
               Tap a donor to see what they donated. Archive a comment once it's been addressed. It moves to the Archive tab.
@@ -1559,8 +1469,9 @@ export default function ReportsTab() {
               </div>
             )}
           </Card>
+          </div>
         </>
       )}
-    </div>
+    </>
   )
 }

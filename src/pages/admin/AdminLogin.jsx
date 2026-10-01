@@ -17,9 +17,9 @@ export default function AdminLogin() {
     setLoading(true)
 
     const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password })
-    setLoading(false)
 
     if (authError) {
+      setLoading(false)
       setError(authError.message)
       return
     }
@@ -33,11 +33,28 @@ export default function AdminLogin() {
       .single()
 
     if (profile?.role !== 'admin') {
+      setLoading(false)
       setError('This account is not registered as an administrator.')
       await supabase.auth.signOut()
       return
     }
 
+    // Staff registry check — a staff member who was deactivated can no longer log in.
+    // (Admins not yet listed in the registry are still allowed, so nobody gets locked out.)
+    const { data: staffRow } = await supabase
+      .from('staff_members')
+      .select('is_active')
+      .ilike('email', data.user.email)
+      .maybeSingle()
+
+    if (staffRow && staffRow.is_active === false) {
+      setLoading(false)
+      setError('This staff account has been deactivated. Contact the administrator.')
+      await supabase.auth.signOut()
+      return
+    }
+
+    setLoading(false)
     navigate('/admin/dashboard')
   }
 

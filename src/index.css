@@ -9,3 +9,9 @@ html {
 body {
   @apply bg-cream text-ink;
 }
+
+@layer components {
+  .input-base {
+  @apply w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#1d5fa8] focus:ring-2 focus:ring-[#1d5fa8]/20 disabled:bg-slate-50;
+}
+}

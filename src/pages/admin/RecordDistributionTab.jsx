@@ -37,6 +37,135 @@ function generateSerialNumber() {
   return `MF-${year}-${rand}`
 }
 
+/* ── Account creation helpers ── */
+function randomPassword() {
+  // Easy to read off a screen and hand-copy onto a card: no look-alike characters.
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
+  let out = ''
+  for (let i = 0; i < 10; i++) out += chars[Math.floor(Math.random() * chars.length)]
+  return out
+}
+
+/* "Fabila, Josie, Rivera" -> "josie.fabila" (+ a couple of digits if it looks taken) */
+function suggestUsername(householdHead) {
+  const base = String(householdHead || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const name = base.length >= 2 ? `${base[1]}.${base[0]}` : base[0] || 'beneficiary'
+  const slug = name
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9.]+/g, '')
+  return slug || 'beneficiary'
+}
+
+async function createBeneficiaryAccount({ email, password, username, householdHead, lastName, firstName, middleName, barangay, contactNumber, householdSize }) {
+  const { data, error } = await supabase.functions.invoke('create-beneficiary-account', {
+    body: { email, password, username, householdHead, lastName, firstName, middleName, barangay, contactNumber, householdSize },
+  })
+  if (error) {
+    // supabase-js only gives a generic message for non-2xx responses; try to read the real one
+    let message = error.message
+    try {
+      const body = await error.context?.json?.()
+      if (body?.error) message = body.error
+    } catch { /* ignore */ }
+    return { error: message }
+  }
+  if (data?.error) return { error: data.error }
+  return { userId: data?.userId }
+}
+
+/* ── "Give this household a login" panel. Used by both the new-family
+   and existing-beneficiary flows so the beneficiary can later see, on
+   their own dashboard, everything they've received. ── */
+function AccountPanel({ email, setEmail, password, setPassword, username, setUsername, householdHead, show, setShow, result }) {
+  return (
+    <div className="mt-4 border border-line-soft p-4">
+      <label className="flex cursor-pointer items-center gap-2 text-xs font-bold text-ink">
+        <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} />
+        Create a login account for this household
+      </label>
+      <p className="mt-1 text-[11px] text-faint">
+        Optional — dili sila kabalo unsay ilang nadawat kung wala silay account. I-type ang ilang email,
+        ug naay awtomatik nga password nga pwede nimo ilisan.
+      </p>
+
+      {show && (
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-muted">Username</label>
+            <div className="flex gap-2">
+              <input
+                placeholder="e.g. josie.fabila"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className={inputClass}
+              />
+              <button
+                type="button"
+                onClick={() => setUsername(suggestUsername(householdHead))}
+                className="shrink-0 rounded border border-line px-2.5 text-xs font-semibold text-admin-dark hover:bg-line-soft"
+              >
+                ↻ Suggest
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-muted">Beneficiary email</label>
+            <input
+              type="email"
+              placeholder="e.g. name@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className={inputClass}
+            />
+            <p className="mt-1 text-[11px] text-faint">Gigamit para sa pag-login. Ang username display name ra.</p>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-muted">Password</label>
+            <div className="flex gap-2">
+              <input
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={inputClass + ' font-mono'}
+              />
+              <button
+                type="button"
+                onClick={() => setPassword(randomPassword())}
+                className="shrink-0 rounded border border-line px-2.5 text-xs font-semibold text-admin-dark hover:bg-line-soft"
+              >
+                ↻ New
+              </button>
+            </div>
+          </div>
+          <p className="text-[11px] text-faint sm:col-span-2">
+            Isulat kini nga email ug password sa ilang FACED card o ipadala sa ilaha — kini ang gamiton nila
+            para mag-login sa ilang dashboard.
+          </p>
+        </div>
+      )}
+
+      {result?.userId && (
+        <div className="mt-3 rounded border border-beneficiary-dark bg-beneficiary-light p-3 text-xs">
+          <p className="font-bold text-donor-dark">Account created ✓</p>
+          <p className="mt-1 text-beneficiary-dark">
+            {username && <>Username: <span className="font-bold">{username}</span> · </>}
+            Email: <span className="font-bold">{email}</span> · Password: <span className="font-mono font-bold">{password}</span>
+          </p>
+        </div>
+      )}
+      {result?.error && (
+        <div className="mt-3 rounded border border-warn-text bg-warn-bg p-3 text-xs text-warn-text">
+          <p className="font-bold">Could not create the account.</p>
+          <p className="mt-1">{result.error}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ── Mode picker: New family vs. Existing beneficiary ── */
 function ModePicker({ mode, onSelect }) {
   return (
@@ -77,6 +206,19 @@ function QuickDistributionForm({ existingRecord, onDone }) {
   const [signature, setSignature] = useState(null)
   const [status, setStatus] = useState('')
 
+  // Does this household already have a linked login account?
+  const [hasAccount, setHasAccount] = useState(undefined) // undefined = checking
+  const [linkedBeneficiaryId, setLinkedBeneficiaryId] = useState(null)
+  const [wantAccount, setWantAccount] = useState(false)
+  const [accountEmail, setAccountEmail] = useState('')
+  const [accountUsername, setAccountUsername] = useState('')
+  const [accountPassword, setAccountPassword] = useState(randomPassword())
+  const [accountResult, setAccountResult] = useState(null)
+
+  useEffect(() => {
+    setAccountUsername(suggestUsername(existingRecord.household_head))
+  }, [existingRecord.household_head])
+
   useEffect(() => {
     async function loadInventory() {
       const { data } = await supabase
@@ -90,6 +232,33 @@ function QuickDistributionForm({ existingRecord, onDone }) {
     }
     loadInventory()
   }, [])
+
+  useEffect(() => {
+    async function checkAccount() {
+      // Prefer matching by contact number; fall back to household_head so
+      // households without a saved contact number still get recognized.
+      let found = null
+      if (existingRecord.contact_primary) {
+        const { data } = await supabase
+          .from('beneficiaries')
+          .select('id')
+          .eq('contact_number', existingRecord.contact_primary)
+          .maybeSingle()
+        found = data
+      }
+      if (!found && existingRecord.household_head) {
+        const { data } = await supabase
+          .from('beneficiaries')
+          .select('id')
+          .ilike('household_head', existingRecord.household_head)
+          .maybeSingle()
+        found = data
+      }
+      setHasAccount(!!found)
+      setLinkedBeneficiaryId(found?.id || null)
+    }
+    checkAccount()
+  }, [existingRecord.contact_primary, existingRecord.household_head])
 
   const selected = inventory.find((i) => i.item === selectedItem)
   const overStock = selected && Number(quantity) > selected.quantity_on_hand
@@ -106,6 +275,7 @@ function QuickDistributionForm({ existingRecord, onDone }) {
 
     const { error: insertError } = await supabase.from('distributions').insert({
       serial_number: existingRecord.serial_number,
+      household_id: linkedBeneficiaryId,
       household_head: existingRecord.household_head,
       category: selected.category,
       item: selected.item,
@@ -162,6 +332,23 @@ function QuickDistributionForm({ existingRecord, onDone }) {
     if (uploadError) console.error('Upload error:', uploadError)
     if (insertError) console.error('Insert error:', insertError)
 
+    let accountOutcome = null
+    if (!uploadError && !insertError && wantAccount && accountEmail.trim()) {
+      accountOutcome = await createBeneficiaryAccount({
+        email: accountEmail.trim(),
+        password: accountPassword,
+        username: accountUsername.trim(),
+        householdHead: existingRecord.household_head,
+        lastName: existingRecord.head_last_name,
+        firstName: existingRecord.head_first_name,
+        middleName: existingRecord.head_middle_name,
+        barangay: existingRecord.barangay,
+        contactNumber: existingRecord.contact_primary,
+        householdSize: existingRecord.family_members?.length,
+      })
+      setAccountResult(accountOutcome)
+    }
+
     setStatus(!uploadError && !insertError ? 'success' : 'error')
   }
 
@@ -174,6 +361,24 @@ function QuickDistributionForm({ existingRecord, onDone }) {
             Serial number: <span className="font-bold">{existingRecord.serial_number}</span>
           </p>
         </div>
+
+        {accountResult?.userId && (
+          <div className="mt-3 rounded border border-beneficiary-dark bg-beneficiary-light p-4">
+            <p className="text-sm font-bold text-donor-dark">Account created ✓</p>
+            <p className="mt-1 text-xs text-beneficiary-dark">
+              {accountUsername && <>Username: <span className="font-bold">{accountUsername}</span> · </>}
+              Email: <span className="font-bold">{accountEmail}</span> · Password:{' '}
+              <span className="font-mono font-bold">{accountPassword}</span>
+            </p>
+          </div>
+        )}
+        {accountResult?.error && (
+          <div className="mt-3 rounded border border-warn-text bg-warn-bg p-4 text-xs text-warn-text">
+            <p className="font-bold">Could not create the account.</p>
+            <p className="mt-1">{accountResult.error}</p>
+          </div>
+        )}
+
         <button
           onClick={onDone}
           className="mt-4 text-xs font-semibold text-admin-dark hover:underline"
@@ -253,6 +458,26 @@ function QuickDistributionForm({ existingRecord, onDone }) {
           </>
         )}
       </div>
+
+      {hasAccount === false && (
+        <AccountPanel
+          email={accountEmail}
+          setEmail={setAccountEmail}
+          password={accountPassword}
+          setPassword={setAccountPassword}
+          username={accountUsername}
+          setUsername={setAccountUsername}
+          householdHead={existingRecord.household_head}
+          show={wantAccount}
+          setShow={setWantAccount}
+          result={null}
+        />
+      )}
+      {hasAccount === true && (
+        <p className="mt-4 text-[11px] font-semibold text-beneficiary-dark">
+          ✓ This household already has a login account — they can already see this on their dashboard.
+        </p>
+      )}
 
       <div className="mt-4 border border-line-soft p-4">
         <div className="mb-2 text-xs font-bold text-ink">Hand device to recipient to confirm receipt</div>
@@ -389,8 +614,23 @@ function NewFamilyForm({ prefillSerial }) {
   const [status, setStatus] = useState('')
   const [savedSerial, setSavedSerial] = useState('')
 
+  // Login account for this household (optional)
+  const [wantAccount, setWantAccount] = useState(false)
+  const [accountEmail, setAccountEmail] = useState('')
+  const [accountUsername, setAccountUsername] = useState('')
+  const [accountUsernameTouched, setAccountUsernameTouched] = useState(false)
+  const [accountPassword, setAccountPassword] = useState(randomPassword())
+  const [accountResult, setAccountResult] = useState(null)
+
   const selectedInventoryItem = inventory.find((i) => i.item === form.item)
   const overStock = selectedInventoryItem && Number(form.quantity) > selectedInventoryItem.quantity_on_hand
+
+  // Keep the suggested username in sync with the name fields, unless staff already edited it
+  useEffect(() => {
+    if (accountUsernameTouched) return
+    const head = [form.lastName, form.firstName, form.middleName].filter(Boolean).join(', ')
+    setAccountUsername(suggestUsername(head))
+  }, [form.lastName, form.firstName, form.middleName, accountUsernameTouched])
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }))
@@ -476,6 +716,23 @@ function NewFamilyForm({ prefillSerial }) {
       brgy_captain_name: form.brgyCaptainName,
       lswdo_name: form.lswdoName,
     })
+
+    let accountOutcome = null
+    if (!uploadError && !insertError && wantAccount && accountEmail.trim()) {
+      accountOutcome = await createBeneficiaryAccount({
+        email: accountEmail.trim(),
+        password: accountPassword,
+        username: accountUsername.trim(),
+        householdHead,
+        lastName: form.lastName,
+        firstName: form.firstName,
+        middleName: form.middleName,
+        barangay: form.barangay,
+        contactNumber: form.contactPrimary,
+        householdSize: familyMembers.length,
+      })
+      setAccountResult(accountOutcome)
+    }
 
     if (!uploadError && !insertError) {
       setSavedSerial(finalSerial)
@@ -698,6 +955,22 @@ function NewFamilyForm({ prefillSerial }) {
           <Field label="Name/Signature of Brgy. Captain"><input className={inputClass} value={form.brgyCaptainName} onChange={(e) => update('brgyCaptainName', e.target.value)} /></Field>
           <Field label="Name/Signature of LSWDO"><input className={inputClass} value={form.lswdoName} onChange={(e) => update('lswdoName', e.target.value)} /></Field>
         </div>
+      </Card>
+
+      <Card className="rounded-none border-0 border-b border-line p-6 shadow-none">
+        <SectionHeader>Beneficiary login (optional)</SectionHeader>
+        <AccountPanel
+          email={accountEmail}
+          setEmail={setAccountEmail}
+          password={accountPassword}
+          setPassword={setAccountPassword}
+          username={accountUsername}
+          setUsername={(v) => { setAccountUsernameTouched(true); setAccountUsername(v) }}
+          householdHead={[form.lastName, form.firstName, form.middleName].filter(Boolean).join(', ')}
+          show={wantAccount}
+          setShow={setWantAccount}
+          result={status === 'success' ? accountResult : null}
+        />
       </Card>
 
       <Card className="rounded-none border-0 p-6 shadow-none">
