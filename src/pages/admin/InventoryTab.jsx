@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Card from '../../components/ui/Card.jsx'
 import { supabase } from '../../lib/supabase.js'
+import StockDetailsModal from './Stockdetailsmodal.jsx'
 
 const LOW_STOCK_THRESHOLD = 10
 
@@ -57,6 +58,7 @@ export default function InventoryTab() {
   const [search, setSearch] = useState('')
   const [activeCategory, setActiveCategory] = useState('All')
   const [statusFilter, setStatusFilter] = useState('all') // 'all' | 'low' | 'out'
+  const [selected, setSelected] = useState(null) // the stock card that was tapped
   const stockRef = useRef(null)
 
   async function loadInventory() {
@@ -137,6 +139,7 @@ export default function InventoryTab() {
         <h1 className="mb-1 text-xl font-bold text-admin-dark">Inventory</h1>
         <p className="text-xs text-faint">
           Auto-updated — stock increases when a donation is confirmed and decreases when it's distributed.
+          Tap an item to see who donated it, when, and to edit or archive an entry.
         </p>
       </div>
 
@@ -256,10 +259,15 @@ export default function InventoryTab() {
                     {rows.map((i) => {
                       const qty = i.quantity_on_hand
                       const isOut = qty <= 0
+                      const open = () => setSelected({ id: i.id, category: i.category, item: i.item, unit: i.unit })
                       return (
                         <div
                           key={i.id}
-                          className="flex min-h-[170px] flex-col justify-between rounded-lg border border-t-4 p-4 text-center"
+                          role="button"
+                          tabIndex={0}
+                          onClick={open}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') open() }}
+                          className="flex min-h-[185px] cursor-pointer flex-col justify-between rounded-lg border border-t-4 p-4 text-center transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-admin/40"
                           style={{
                             background: c.bg,
                             borderColor: c.border,
@@ -286,6 +294,9 @@ export default function InventoryTab() {
 
                           <div>
                             <StatusBadge qty={qty} />
+                            <div className="mt-1.5 text-[10px] font-semibold" style={{ color: c.accent }}>
+                              View donors →
+                            </div>
                           </div>
                         </div>
                       )
@@ -297,6 +308,17 @@ export default function InventoryTab() {
           </div>
         </Card>
       </div>
+
+      {selected && (
+        <StockDetailsModal
+          category={selected.category}
+          item={selected.item}
+          unit={selected.unit}
+          inventoryId={selected.id}
+          onClose={() => setSelected(null)}
+          onChanged={loadInventory}
+        />
+      )}
     </>
   )
 }

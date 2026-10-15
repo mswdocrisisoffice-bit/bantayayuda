@@ -97,12 +97,21 @@ export default function LandingPage() {
         <div className="pointer-events-none absolute -bottom-32 left-1/3 h-80 w-80 rounded-full bg-[#2f855a]/15" />
 
         <div className="relative mx-auto max-w-5xl">
-          <div className="mb-12 flex items-center gap-3">
-            <img src={bantayayudaSeal} alt="BantayAyuda seal" className="h-16 w-16 shrink-0" />
-            <div>
-              <div className="text-lg font-bold leading-tight">BantayAyuda</div>
-              <div className="text-[11px] text-white/60">Manolo Fortich, Bukidnon</div>
+          <div className="mb-12 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <img src={bantayayudaSeal} alt="BantayAyuda seal" className="h-16 w-16 shrink-0" />
+              <div>
+                <div className="text-lg font-bold leading-tight">BantayAyuda</div>
+                <div className="text-[11px] text-white/60">Manolo Fortich, Bukidnon</div>
+              </div>
             </div>
+            <Link
+              to="/admin/login"
+              className="flex items-center gap-1.5 rounded-lg border border-white/20 bg-white/5 px-3.5 py-2 text-xs font-semibold text-white/85 transition-colors hover:border-white/40 hover:bg-white/10 hover:text-white"
+            >
+              <Icon path={icons.shield} className="h-3.5 w-3.5" />
+              Staff access
+            </Link>
           </div>
 
           <div className="max-w-2xl">
@@ -286,14 +295,8 @@ export default function LandingPage() {
             </div>
           </div>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 px-4 py-4 text-[11px] text-white/50">
-          <span className="mx-auto max-w-5xl flex-1">
-            BantayAyuda · Relief goods and distribution tracking for Manolo Fortich, Bukidnon
-          </span>
-          {/* Discreet staff entry */}
-          <Link to="/admin/login" className="text-white/20 transition-colors hover:text-white/60">
-            Staff access
-          </Link>
+        <div className="border-t border-white/10 px-4 py-4 text-center text-[11px] text-white/50">
+          BantayAyuda · Relief goods and distribution tracking for Manolo Fortich, Bukidnon
         </div>
       </footer>
     </div>

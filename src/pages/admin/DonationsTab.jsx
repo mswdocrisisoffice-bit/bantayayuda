@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
 import Badge from '../../components/ui/Badge.jsx'
@@ -6,7 +6,7 @@ import Avatar from '../../components/ui/Avatar.jsx'
 import { supabase } from '../../lib/supabase.js'
 import { BARANGAY_POSITIONS } from '../../components/ui/BarangayMap.jsx'
 
-/* ── Full donation category → item list ── */
+/* ── Built-in donation category → item list ── */
 export const CATEGORIES = {
   'Medical & Health Supplies': [
     'Bandages', 'Gauze', 'Medical tape', 'Antiseptic wipes', 'Tweezers', 'Scissors',
@@ -48,7 +48,7 @@ export const CATEGORIES = {
   ],
 }
 
-export const UNITS = ['pcs', 'kg', 'g', 'L', 'mL', 'sacks', 'boxes', 'packs', 'bottles', 'cans', 'sets', 'pairs', 'rolls']
+export const UNITS = ['pcs', 'kg', 'g', 'L', 'mL', 'sacks', 'boxes', 'packs', 'bottles', 'cans', 'sets', 'pairs', 'rolls', 'PHP']
 
 export const DONOR_TYPES = [
   { value: 'non-government', label: 'Non-government / Private' },
@@ -61,10 +61,43 @@ const DONOR_TYPE_HINTS = {
 }
 
 const OTHER = 'Other (specify)'
+const OTHER_CATEGORY = 'Other category (specify)'
+
+/* ── Built-in + custom categories (custom ones are saved in Supabase, so they stay permanently).
+   Use this hook in Inventory / Reports too, instead of reading CATEGORIES directly. ── */
+export function useAllCategories() {
+  const [custom, setCustom] = useState([])
+
+  const reload = useCallback(async () => {
+    const { data } = await supabase
+      .from('donation_categories')
+      .select('name, donation_items(name, unit)')
+      .eq('is_active', true)
+      .order('name')
+    setCustom(data || [])
+  }, [])
+
+  useEffect(() => { reload() }, [reload])
+
+  const categories = useMemo(() => {
+    const merged = {}
+    Object.entries(CATEGORIES).forEach(([k, v]) => { merged[k] = [...v] })
+    custom.forEach((c) => {
+      const list = merged[c.name] || (merged[c.name] = [])
+      ;(c.donation_items || []).forEach((i) => {
+        if (!list.includes(i.name)) list.push(i.name)
+      })
+    })
+    return merged
+  }, [custom])
+
+  return { categories, reload }
+}
 
 /* ── Unit that usually goes with an item (pants → pcs, rice → kg, canned goods → cans …).
    First matching rule wins; otherwise fall back on the category. ── */
 const UNIT_RULES = [
+  [/cash|pera/, 'PHP'],
   [/^canned |infant formula/, 'cans'],
   [/bottled water|hand sanitizer|shampoo|conditioner|body wash|peanut butter|cooking oil|soy sauce|vinegar/, 'bottles'],
   [/socks|sneakers|boots|sandals|shoes|slippers|crutches|^gloves/, 'pairs'],
@@ -107,6 +140,14 @@ const CATEGORY_COLORS = {
 }
 const FALLBACK_COLOR = { bg: '#EEF1F4', accent: '#4A5568' }
 
+/* Custom categories get a stable color picked from their name */
+const EXTRA_COLORS = [
+  { bg: '#EEF2FF', accent: '#4F46E5' },
+  { bg: '#FDF2F8', accent: '#DB2777' },
+  { bg: '#ECFEFF', accent: '#0E7490' },
+  { bg: '#FEFCE8', accent: '#A16207' },
+]
+
 /* Date filter for the Manage donations list */
 const RANGE_OPTIONS = [
   { key: 'all', label: 'All time' },
@@ -138,7 +179,11 @@ export function inDates(iso, from, to) {
   return true
 }
 export function categoryColor(category) {
-  return CATEGORY_COLORS[category] || FALLBACK_COLOR
+  if (CATEGORY_COLORS[category]) return CATEGORY_COLORS[category]
+  if (!category) return FALLBACK_COLOR
+  let h = 0
+  for (const ch of category) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return EXTRA_COLORS[h % EXTRA_COLORS.length]
 }
 
 /* ── Text input that suggests registered donors as the admin types (matches name or email) ── */
@@ -339,8 +384,8 @@ function BarangaySuggestInput({ label, value, onChange, required, size = 'md' })
   )
 }
 
-function CategoryItemFields({ category, item, customItem, onCategory, onItem, onCustomItem }) {
-  const itemOptions = category ? [...(CATEGORIES[category] || []), OTHER] : []
+function CategoryItemFields({ categories, category, item, customItem, onCategory, onItem, onCustomItem }) {
+  const itemOptions = category ? [...(categories[category] || []), OTHER] : []
   return (
     <>
       <div>
@@ -352,7 +397,7 @@ function CategoryItemFields({ category, item, customItem, onCategory, onItem, on
           className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-admin"
         >
           <option value="" disabled>Select category</option>
-          {Object.keys(CATEGORIES).map((c) => (
+          {Object.keys(categories).map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
@@ -390,11 +435,12 @@ function CategoryItemFields({ category, item, customItem, onCategory, onItem, on
   )
 }
 
-function EditDonationRow({ donation, onCancel, onSaved }) {
+export function EditDonationRow({ donation, categories, onCancel, onSaved }) {
+  const known = categories[donation.category]?.includes(donation.item)
   const [form, setForm] = useState({
     category: donation.category || '',
-    item: CATEGORIES[donation.category]?.includes(donation.item) ? donation.item : (donation.item ? OTHER : ''),
-    customItem: CATEGORIES[donation.category]?.includes(donation.item) ? '' : (donation.item || ''),
+    item: known ? donation.item : (donation.item ? OTHER : ''),
+    customItem: known ? '' : (donation.item || ''),
     quantity: donation.quantity || '',
     unit: donation.unit || 'kg',
     barangay: donation.barangay || '',
@@ -434,6 +480,7 @@ function EditDonationRow({ donation, onCancel, onSaved }) {
     <div className="rounded-lg border border-admin bg-admin-light px-4 py-3">
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <CategoryItemFields
+          categories={categories}
           category={form.category}
           item={form.item}
           customItem={form.customItem}
@@ -688,10 +735,13 @@ export function DonationBox({ d, isOpen, onToggle, actions }) {
 }
 
 export default function DonationsTab() {
+  const { categories: allCategories, reload: reloadCategories } = useAllCategories()
+
   const [form, setForm] = useState({
     donorName: '',
     donorEmail: '',
     category: '',
+    customCategory: '',
     item: '',
     customItem: '',
     quantity: '',
@@ -703,16 +753,12 @@ export default function DonationsTab() {
     isPrivate: false,
   })
   const [status, setStatus] = useState('')
+  const [savedNote, setSavedNote] = useState('')
   const [unitTouched, setUnitTouched] = useState(false) // true once staff picks a unit by hand
 
   const [donations, setDonations] = useState([])
   const [donors, setDonors] = useState([]) // registered donor accounts, used for suggestions
   const [listLoading, setListLoading] = useState(true)
-  const [editingId, setEditingId] = useState(null)
-  const [busyId, setBusyId] = useState(null)
-  const [openId, setOpenId] = useState(null) // which donation box is expanded
-  const [dateFrom, setDateFrom] = useState('') // date filter for Manage donations
-  const [dateTo, setDateTo] = useState('')
 
   async function loadDonations() {
     setListLoading(true)
@@ -743,12 +789,22 @@ export default function DonationsTab() {
     setForm((f) => ({ ...f, [field]: value }))
   }
 
+  const isNewCategory = form.category === OTHER_CATEGORY
+
   /* Unit recommended for the chosen item (pants → pcs, rice → kg …) */
   const suggestedUnit = form.category ? suggestUnit(form.category, form.item, form.customItem) : ''
 
   function handleCategoryChange(v) {
     setUnitTouched(false)
-    setForm((f) => ({ ...f, category: v, item: '', customItem: '', unit: suggestUnit(v, '') }))
+    setForm((f) => ({
+      ...f,
+      category: v,
+      customCategory: '',
+      // a brand-new category has no item list yet, so the item is typed in
+      item: v === OTHER_CATEGORY ? OTHER : '',
+      customItem: '',
+      unit: suggestUnit(v, v === OTHER_CATEGORY ? OTHER : ''),
+    }))
   }
 
   function handleItemChange(v) {
@@ -767,9 +823,16 @@ export default function DonationsTab() {
   /* The donor account that matches the typed email (if any) */
   const matchedDonor = useMemo(() => {
     const email = form.donorEmail.trim().toLowerCase()
-    if (!email) return null
-    return donors.find((d) => (d.email || '').toLowerCase() === email) || null
-  }, [donors, form.donorEmail])
+    if (email) return donors.find((d) => (d.email || '').toLowerCase() === email) || null
+
+    // No email typed: link by name when exactly one registered donor has that name
+    const name = form.donorName.trim().toLowerCase()
+    if (!name) return null
+    const same = donors.filter(
+      (d) => (d.full_name || '').toLowerCase() === name || donorDisplayName(d).toLowerCase() === name
+    )
+    return same.length === 1 ? same[0] : null
+  }, [donors, form.donorEmail, form.donorName])
 
   /* Their earlier donations, for a quick "returning donor" summary */
   const donorHistory = useMemo(() => {
@@ -788,9 +851,49 @@ export default function DonationsTab() {
     }))
   }
 
+  /* Saves a custom category (and its item) so it is available in every future entry and in Inventory */
+  async function saveCustomCategory(categoryName, itemName, unit) {
+    const safeName = categoryName.replace(/[%_]/g, '\\$&')
+    let { data: cat } = await supabase
+      .from('donation_categories')
+      .select('id')
+      .ilike('name', safeName)
+      .maybeSingle()
+
+    if (!cat) {
+      const { data: created, error } = await supabase
+        .from('donation_categories')
+        .insert({ name: categoryName })
+        .select('id')
+        .single()
+      if (error) return false
+      cat = created
+    }
+
+    if (itemName) {
+      const { error } = await supabase
+        .from('donation_items')
+        .insert({ category_id: cat.id, name: itemName, unit: unit || null })
+      if (error && error.code !== '23505') return false // 23505 = item already saved
+    }
+    return true
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     setStatus('saving')
+    setSavedNote('')
+
+    // Resolve the final category name (typed one is matched to an existing one, ignoring case)
+    let finalCategory = form.category
+    if (isNewCategory) {
+      const typed = form.customCategory.trim()
+      if (typed.length < 2) {
+        setStatus('error')
+        return
+      }
+      finalCategory = Object.keys(allCategories).find((c) => c.toLowerCase() === typed.toLowerCase()) || typed
+    }
 
     // Prefer the donor picked from suggestions; otherwise look the email up
     let donorId = matchedDonor?.id ?? null
@@ -803,12 +906,12 @@ export default function DonationsTab() {
       donorId = donor?.id ?? null
     }
 
-    const finalItem = form.item === OTHER ? form.customItem : form.item
+    const finalItem = (form.item === OTHER ? form.customItem : form.item).trim()
 
     const { error } = await supabase.from('donations').insert({
       donor_id: donorId,
       donor_name: form.donorName,
-      category: form.category,
+      category: finalCategory,
       item: finalItem,
       quantity: form.quantity,
       unit: form.unit,
@@ -822,11 +925,25 @@ export default function DonationsTab() {
 
     setStatus(error ? 'error' : 'success')
     if (!error) {
+      // Keep any non-built-in category (and its item) for next time. The donation is already saved,
+      // so a failure here never blocks it.
+      const isCustom = !Object.prototype.hasOwnProperty.call(CATEGORIES, finalCategory)
+      if (isCustom) {
+        const ok = await saveCustomCategory(finalCategory, finalItem, form.unit)
+        if (ok) {
+          await reloadCategories()
+          if (isNewCategory) setSavedNote(`"${finalCategory}" was added as a new category.`)
+        } else {
+          setSavedNote('Donation saved, but the new category could not be stored for future use.')
+        }
+      }
+
       setUnitTouched(false)
       setForm({
         donorName: '',
         donorEmail: '',
         category: '',
+        customCategory: '',
         item: '',
         customItem: '',
         quantity: '',
@@ -841,26 +958,11 @@ export default function DonationsTab() {
     }
   }
 
-  const visibleDonations = useMemo(
-    () => donations.filter((d) => inDates(d.created_at, dateFrom, dateTo)),
-    [donations, dateFrom, dateTo]
-  )
-
-  async function archiveDonation(id) {
-    setBusyId(id)
-    const { error } = await supabase
-      .from('donations')
-      .update({ status: 'archived', archived_at: new Date().toISOString() })
-      .eq('id', id)
-    setBusyId(null)
-    if (!error) loadDonations()
-  }
-
   return (
     <>
       <div className="mb-6 rounded-card bg-white/90 p-5 shadow-[0_2px_6px_rgba(0,0,0,0.08)]">
   <h1 className="mb-1 text-xl font-bold text-admin-dark">Donations</h1>
-  <p className="text-sm text-faint">Verify donors and record entries on their behalf</p>
+  <p className="text-sm text-faint">Verify donors and record entries on their behalf. To edit or archive an entry, open it from Inventory.</p>
 </div>
 
       <Card className="p-6">
@@ -911,6 +1013,13 @@ export default function DonationsTab() {
               </div>
             )}
 
+            {!matchedDonor && !form.donorEmail.trim() && form.donorName.trim().length > 1 && (
+              <div className="mt-2 rounded-lg bg-warn-bg px-3 py-2 text-[11px] text-warn-text">
+                Not linked to a donor account yet. Pick the donor from the suggestions or enter their email,
+                otherwise this donation won't show on their dashboard.
+              </div>
+            )}
+
             {!matchedDonor && form.donorEmail.includes('@') && (
               <div className="mt-2 rounded-lg bg-warn-bg px-3 py-2 text-[11px] text-warn-text">
                 No registered account uses this email. The donation will still be recorded, but it won't be linked to a donor dashboard.
@@ -927,37 +1036,59 @@ export default function DonationsTab() {
               className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin"
             >
               <option value="" disabled>Select category</option>
-              {Object.keys(CATEGORIES).map((c) => (
+              {Object.keys(allCategories).map((c) => (
                 <option key={c} value={c}>{c}</option>
               ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-muted">Item</label>
-            <select
-              required
-              value={form.item}
-              disabled={!form.category}
-              onChange={(e) => handleItemChange(e.target.value)}
-              className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin disabled:bg-line-soft disabled:text-faint"
-            >
-              <option value="" disabled>{form.category ? 'Select item' : 'Pick a category first'}</option>
-              {(form.category ? [...CATEGORIES[form.category], OTHER] : []).map((i) => (
-                <option key={i} value={i}>{i}</option>
-              ))}
+              <option value={OTHER_CATEGORY}>+ {OTHER_CATEGORY}</option>
             </select>
           </div>
 
-          {form.item === OTHER && (
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-semibold text-muted">Specify item name</label>
+          {isNewCategory ? (
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-muted">New category name</label>
               <input
                 required
-                placeholder="Type the item name"
+                placeholder="e.g. Cash Assistance"
+                value={form.customCategory}
+                onChange={(e) => update('customCategory', e.target.value)}
+                className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin"
+              />
+            </div>
+          ) : (
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-muted">Item</label>
+              <select
+                required
+                value={form.item}
+                disabled={!form.category}
+                onChange={(e) => handleItemChange(e.target.value)}
+                className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin disabled:bg-line-soft disabled:text-faint"
+              >
+                <option value="" disabled>{form.category ? 'Select item' : 'Pick a category first'}</option>
+                {(form.category ? [...(allCategories[form.category] || []), OTHER] : []).map((i) => (
+                  <option key={i} value={i}>{i}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {form.item === OTHER && (
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs font-semibold text-muted">
+                {isNewCategory ? 'Item name (first item in this new category)' : 'Specify item name'}
+              </label>
+              <input
+                required
+                placeholder={isNewCategory ? 'e.g. Cash' : 'Type the item name'}
                 value={form.customItem}
                 onChange={(e) => handleCustomItemChange(e.target.value)}
                 className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin"
               />
+              {isNewCategory && (
+                <p className="mt-1 text-xs text-faint">
+                  This category and item are saved permanently, so they appear in the dropdown next time and in Inventory.
+                </p>
+              )}
             </div>
           )}
 
@@ -1066,98 +1197,17 @@ export default function DonationsTab() {
 
           {status === 'success' && (
             <p className="text-sm font-semibold text-donor-dark sm:col-span-2">
-              Donation recorded.
+              Donation recorded. {savedNote}
             </p>
           )}
           {status === 'error' && (
             <p className="text-sm font-semibold text-admin sm:col-span-2">
-              Could not save — please try again.
+              Could not save — please check the fields and try again.
             </p>
           )}
         </form>
       </Card>
 
-      <Card className="mt-4 p-6">
-        <h2 className="mb-1 text-base font-bold text-ink">Manage donations</h2>
-        <p className="mb-4 text-sm text-faint">
-          Fix a wrong entry, or archive it if it was recorded by mistake. Archived entries
-          disappear from the donor's dashboard and the public feed, but stay on record —
-          check the Archive tab to restore one.
-        </p>
-
-        {listLoading && <p className="text-sm text-faint">Loading…</p>}
-        {!listLoading && donations.length === 0 && (
-          <p className="text-sm text-faint">No donation entries yet.</p>
-        )}
-
-        {donations.length > 0 && (
-          <DateRangeFilter
-            donations={donations}
-            dateFrom={dateFrom}
-            dateTo={dateTo}
-            setDateFrom={setDateFrom}
-            setDateTo={setDateTo}
-            shown={visibleDonations.length}
-          />
-        )}
-
-        {!listLoading && donations.length > 0 && visibleDonations.length === 0 && (
-          <p className="text-sm text-faint">No donations in this period.</p>
-        )}
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {visibleDonations.map((d) => {
-            if (editingId === d.id) {
-              return (
-                <div key={d.id} className="sm:col-span-2 lg:col-span-3">
-                  <EditDonationRow
-                    donation={d}
-                    onCancel={() => setEditingId(null)}
-                    onSaved={() => {
-                      setEditingId(null)
-                      loadDonations()
-                    }}
-                  />
-                </div>
-              )
-            }
-
-            return (
-              <DonationBox
-                key={d.id}
-                d={d}
-                isOpen={openId === d.id}
-                onToggle={() => setOpenId((cur) => (cur === d.id ? null : d.id))}
-                actions={
-                  <>
-                    <button
-                      onClick={() => setEditingId(d.id)}
-                      className="rounded-lg bg-line-soft px-3 py-1.5 text-xs font-semibold text-ink hover:bg-line"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (
-                          confirm(
-                            'Archive this donation? It will be removed from the donor dashboard and public feed.'
-                          )
-                        ) {
-                          archiveDonation(d.id)
-                        }
-                      }}
-                      disabled={busyId === d.id}
-                      className="rounded-lg bg-admin px-3 py-1.5 text-xs font-semibold text-white hover:bg-admin-dark disabled:opacity-50"
-                    >
-                      {busyId === d.id ? 'Archiving…' : 'Archive'}
-                    </button>
-                  </>
-                }
-              />
-            )
-          })}
-        </div>
-      </Card>
     </>
   )
 }
