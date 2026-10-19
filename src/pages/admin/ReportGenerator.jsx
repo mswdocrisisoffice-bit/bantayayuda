@@ -168,9 +168,39 @@ export default function ReportGenerator() {
     <>
       <style>{`
         @media print {
+          /* A4 paper with a normal margin on every page */
+          @page { size: A4; margin: 14mm 16mm; }
+
+          html, body, #root {
+            height: auto !important;
+            overflow: visible !important;
+            background: #fff !important;
+          }
+
+          /* Print ONLY the letterhead report: hide the system's top bar, sidebar and background */
+          body * { visibility: hidden !important; }
+          .print-page, .print-page * { visibility: visible !important; }
+
+          .print-page {
+            position: absolute !important;
+            left: 0;
+            top: 0;
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+          }
+
           .no-print { display: none !important; }
-          body { background: white !important; }
-          .print-page { box-shadow: none !important; margin: 0 !important; }
+
+          /* Keep lists, photos and signature blocks from splitting across pages */
+          .print-page li,
+          .print-page img,
+          .avoid-break {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
         }
         .editable-field:empty:before {
           content: attr(data-placeholder);
@@ -179,14 +209,16 @@ export default function ReportGenerator() {
       `}</style>
 
       <div className="no-print">
-      <div className="no-print mb-6 rounded-card bg-white/90 p-5 shadow-[0_2px_6px_rgba(0,0,0,0.08)]">
-  <h1 className="mb-1 text-xl font-bold text-admin-dark">Report generator</h1>
-  <p className="mb-4 text-xs text-faint">
-    Click any text, photo, or signature below to edit it. The letterhead layout stays
-    fixed — only the content changes.
-  </p>
- 
-</div>
+        <div className="no-print mb-6 rounded-card bg-white/90 p-5 shadow-[0_2px_6px_rgba(0,0,0,0.08)]">
+          <h1 className="mb-1 text-xl font-bold text-admin-dark">Report generator</h1>
+          <p className="text-xs text-faint">
+            Click any text, photo, or signature below to edit it. The letterhead layout stays
+            fixed — only the content changes.
+          </p>
+          <p className="mt-1 text-[11px] text-faint">
+            Tip: in the print window, turn off “Headers and footers” so only the report is printed.
+          </p>
+        </div>
         <div className="mb-4 flex justify-end">
           <button
             onClick={() => window.print()}
@@ -282,13 +314,13 @@ export default function ReportGenerator() {
         <div className="mb-1 font-bold underline">
           <Editable value={r.photoCaption} onChange={(v) => set('photoCaption', v)} />
         </div>
-        <div className="mb-8 grid grid-cols-2 gap-3">
+        <div className="avoid-break mb-8 grid grid-cols-2 gap-3">
           <ImageSlot label="Add photo" image={photos[0]} onUpload={(d) => setPhoto(0, d)} />
           <ImageSlot label="Add photo" image={photos[1]} onUpload={(d) => setPhoto(1, d)} />
         </div>
 
         {/* Signatures */}
-        <div className="mb-8">
+        <div className="avoid-break mb-8">
           <div>Prepared by:</div>
           <div className="mt-6 h-14 w-48">
             <ImageSlot label="Signature" image={preparedSig} onUpload={setPreparedSig} />
@@ -305,7 +337,7 @@ export default function ReportGenerator() {
           />
         </div>
 
-        <div>
+        <div className="avoid-break">
           <div>Certified True and Correct:</div>
           <div className="mt-6 h-14 w-48">
             <ImageSlot label="Signature" image={certifiedSig} onUpload={setCertifiedSig} />

@@ -55,7 +55,7 @@ const TRUST = [
 export default function LandingPage() {
   const [feed, setFeed] = useState([])
   const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState({ donations: null, households: null })
+  const [stats, setStats] = useState({ donations: null, households: null, served: null })
 
   useEffect(() => {
     async function load() {
@@ -70,15 +70,17 @@ export default function LandingPage() {
       setFeed(data || [])
       setLoading(false)
 
-      // Public stats — if a table is not readable by visitors, its tile is simply hidden.
-      const [d, h] = await Promise.all([
-        supabase.from('donations').select('*', { count: 'exact', head: true }).eq('status', 'confirmed'),
-        supabase.from('beneficiaries').select('*', { count: 'exact', head: true }),
-      ])
-      setStats({
-        donations: d.error ? null : d.count,
-        households: h.error ? null : h.count,
-      })
+      // Public counts come from a database function that returns totals only (no personal data),
+      // because visitors are not allowed to read the beneficiaries table directly.
+      const { data: s, error: sErr } = await supabase.rpc('public_stats')
+      const row = Array.isArray(s) ? s[0] : s
+      if (!sErr && row) {
+        setStats({
+          donations: Number(row.donations),
+          households: Number(row.households),
+          served: Number(row.served),
+        })
+      }
     }
     load()
   }, [])
@@ -87,6 +89,7 @@ export default function LandingPage() {
     { label: 'Barangays covered', value: '22' },
     stats.donations != null && { label: 'Donations recorded', value: stats.donations },
     stats.households != null && { label: 'Households registered', value: stats.households },
+    stats.served != null && { label: 'Households given aid', value: stats.served },
   ].filter(Boolean)
 
   return (
