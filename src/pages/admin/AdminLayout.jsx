@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { AdminTabs } from './AdminDashboard.jsx'
 import manoloBg from '../../assets/manolo-fortich-bg.jpg'
+import OfflineStatus from '../../components/OfflineStatus.jsx'
+import PinGate from '../../components/PinGate.jsx'
 
 function Icon({ path, className = 'h-4 w-4' }) {
   return (
@@ -29,6 +31,9 @@ export default function AdminLayout() {
         className="fixed inset-0 -z-10"
         style={{ backgroundColor: 'rgba(198, 198, 189, 0.77)' }}
       />
+
+      <OfflineStatus />
+      <PinGate />
 
       <div className="flex min-h-screen">
         <AdminTabs

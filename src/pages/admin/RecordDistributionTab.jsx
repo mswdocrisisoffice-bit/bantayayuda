@@ -5,6 +5,7 @@ import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
 import ESignatureCanvas from '../../components/ESignatureCanvas.jsx'
 import { supabase } from '../../lib/supabase.js'
+import { submitDistribution, cachedFetch } from '../../lib/offlineQueue.js'
 
 const emptyMember = { name: '', relation: '', birthdate: '', age: '', sex: '', education: '', occupation: '', remarks: '' }
 
@@ -221,12 +222,14 @@ function QuickDistributionForm({ existingRecord, onDone }) {
 
   useEffect(() => {
     async function loadInventory() {
-      const { data } = await supabase
-        .from('inventory')
-        .select('*')
-        .gt('quantity_on_hand', 0)
-        .order('category', { ascending: true })
-        .order('item', { ascending: true })
+      const { data } = await cachedFetch('inventory_in_stock', () =>
+        supabase
+          .from('inventory')
+          .select('*')
+          .gt('quantity_on_hand', 0)
+          .order('category', { ascending: true })
+          .order('item', { ascending: true })
+      )
       setInventory(data || [])
       setLoadingInventory(false)
     }
@@ -269,11 +272,7 @@ function QuickDistributionForm({ existingRecord, onDone }) {
 
     const fileName = `signatures/${Date.now()}.png`
     const blob = await (await fetch(signature)).blob()
-    const { error: uploadError } = await supabase.storage
-      .from('signatures')
-      .upload(fileName, blob, { contentType: 'image/png' })
-
-    const { error: insertError } = await supabase.from('distributions').insert({
+    const row = {
       serial_number: existingRecord.serial_number,
       household_id: linkedBeneficiaryId,
       household_head: existingRecord.household_head,
@@ -327,40 +326,73 @@ function QuickDistributionForm({ existingRecord, onDone }) {
       date_registered: existingRecord.date_registered,
       brgy_captain_name: existingRecord.brgy_captain_name,
       lswdo_name: existingRecord.lswdo_name,
-    })
-
-    if (uploadError) console.error('Upload error:', uploadError)
-    if (insertError) console.error('Insert error:', insertError)
-
-    let accountOutcome = null
-    if (!uploadError && !insertError && wantAccount && accountEmail.trim()) {
-      accountOutcome = await createBeneficiaryAccount({
-        email: accountEmail.trim(),
-        password: accountPassword,
-        username: accountUsername.trim(),
-        householdHead: existingRecord.household_head,
-        lastName: existingRecord.head_last_name,
-        firstName: existingRecord.head_first_name,
-        middleName: existingRecord.head_middle_name,
-        barangay: existingRecord.barangay,
-        contactNumber: existingRecord.contact_primary,
-        householdSize: existingRecord.family_members?.length,
-      })
-      setAccountResult(accountOutcome)
     }
 
-    setStatus(!uploadError && !insertError ? 'success' : 'error')
+    const accountBody =
+      wantAccount && accountEmail.trim()
+        ? {
+            email: accountEmail.trim(),
+            password: accountPassword,
+            username: accountUsername.trim(),
+            householdHead: existingRecord.household_head,
+            lastName: existingRecord.head_last_name,
+            firstName: existingRecord.head_first_name,
+            middleName: existingRecord.head_middle_name,
+            barangay: existingRecord.barangay,
+            contactNumber: existingRecord.contact_primary,
+            householdSize: existingRecord.family_members?.length,
+          }
+        : null
+
+    // Saves right away when online; otherwise keeps it on this device and uploads later
+    const result = await submitDistribution({ row, signatureBlob: blob, fileName, account: accountBody })
+
+    if (result.queued) {
+      setAccountResult({ queued: true, hasAccount: !!accountBody })
+      setStatus('success')
+      return
+    }
+    if (result.error) {
+      console.error('Save error:', result.error)
+      setStatus('error')
+      return
+    }
+
+    if (accountBody) {
+      setAccountResult(await createBeneficiaryAccount(accountBody))
+    }
+    setStatus('success')
   }
 
   if (status === 'success') {
     return (
       <Card className="p-6">
         <div className="rounded border border-beneficiary-dark bg-beneficiary-light p-4">
-          <p className="text-sm font-bold text-donor-dark">Distribution recorded ✓</p>
+          <p className="text-sm font-bold text-donor-dark">
+            {accountResult?.queued ? 'Saved on this device ✓' : 'Distribution recorded ✓'}
+          </p>
           <p className="mt-1 text-xs text-beneficiary-dark">
             Serial number: <span className="font-bold">{existingRecord.serial_number}</span>
           </p>
+          {accountResult?.queued && (
+            <p className="mt-1 text-xs font-semibold text-warn-text">
+              No signal right now. It will upload automatically when the connection returns
+              {accountResult.hasAccount ? ', and the login account will be created then.' : '.'}
+            </p>
+          )}
         </div>
+
+        {accountResult?.queued && accountResult.hasAccount && (
+          <div className="mt-3 rounded border border-line bg-white p-4 text-xs text-ink">
+            <p className="font-bold">Give these login details to the household:</p>
+            <p className="mt-1">
+              {accountUsername && <>Username: <span className="font-bold">{accountUsername}</span> · </>}
+              Email: <span className="font-bold">{accountEmail}</span> · Password:{' '}
+              <span className="font-mono font-bold">{accountPassword}</span>
+            </p>
+            <p className="mt-1 text-faint">They can sign in once the account has been created (after sync).</p>
+          </div>
+        )}
 
         {accountResult?.userId && (
           <div className="mt-3 rounded border border-beneficiary-dark bg-beneficiary-light p-4">
@@ -512,17 +544,19 @@ function ExistingBeneficiaryFlow({ onSwitchToNew }) {
   const [searched, setSearched] = useState(false)
   const [record, setRecord] = useState(null)
   const [resetKey, setResetKey] = useState(0)
+  const [lookupError, setLookupError] = useState(false)
 
   async function checkSerialNumber() {
     if (!serialNumber.trim()) return
     setChecking(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('distributions')
       .select('*')
       .eq('serial_number', serialNumber.trim())
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
+    setLookupError(!!error && !data)
     setRecord(data || null)
     setSearched(true)
     setChecking(false)
@@ -565,7 +599,16 @@ function ExistingBeneficiaryFlow({ onSwitchToNew }) {
         </button>
       </div>
 
-      {searched && !record && (
+      {searched && !record && lookupError && (
+        <div className="mt-4 rounded border border-warn-text bg-warn-bg p-4 text-xs text-warn-text">
+          <p className="font-bold">Could not look up this serial number — no signal.</p>
+          <p className="mt-1">
+            Existing beneficiaries can only be found when online (unless you searched this serial earlier on this device).
+            You can still use "Register new family" to record the distribution offline.
+          </p>
+        </div>
+      )}
+      {searched && !record && !lookupError && (
         <div className="mt-4 rounded border border-warn-text bg-warn-bg p-4 text-xs text-warn-text">
           <p className="font-bold">No record found for this serial number.</p>
           <button onClick={() => onSwitchToNew(serialNumber)} className="mt-2 font-bold underline">
@@ -585,12 +628,14 @@ function NewFamilyForm({ prefillSerial }) {
 
   useEffect(() => {
     async function loadInventory() {
-      const { data } = await supabase
-        .from('inventory')
-        .select('*')
-        .gt('quantity_on_hand', 0)
-        .order('category', { ascending: true })
-        .order('item', { ascending: true })
+      const { data } = await cachedFetch('inventory_in_stock', () =>
+        supabase
+          .from('inventory')
+          .select('*')
+          .gt('quantity_on_hand', 0)
+          .order('category', { ascending: true })
+          .order('item', { ascending: true })
+      )
       setInventory(data || [])
       setLoadingInventory(false)
     }
@@ -656,13 +701,9 @@ function NewFamilyForm({ prefillSerial }) {
 
     const fileName = `signatures/${Date.now()}.png`
     const blob = await (await fetch(signature)).blob()
-    const { error: uploadError } = await supabase.storage
-      .from('signatures')
-      .upload(fileName, blob, { contentType: 'image/png' })
-
     const householdHead = [form.lastName, form.firstName, form.middleName].filter(Boolean).join(', ')
 
-    const { error: insertError } = await supabase.from('distributions').insert({
+    const row = {
       serial_number: finalSerial,
       household_head: householdHead,
       category: selectedInventoryItem.category,
@@ -715,33 +756,44 @@ function NewFamilyForm({ prefillSerial }) {
       date_registered: form.dateRegistered || null,
       brgy_captain_name: form.brgyCaptainName,
       lswdo_name: form.lswdoName,
-    })
-
-    let accountOutcome = null
-    if (!uploadError && !insertError && wantAccount && accountEmail.trim()) {
-      accountOutcome = await createBeneficiaryAccount({
-        email: accountEmail.trim(),
-        password: accountPassword,
-        username: accountUsername.trim(),
-        householdHead,
-        lastName: form.lastName,
-        firstName: form.firstName,
-        middleName: form.middleName,
-        barangay: form.barangay,
-        contactNumber: form.contactPrimary,
-        householdSize: familyMembers.length,
-      })
-      setAccountResult(accountOutcome)
     }
 
-    if (!uploadError && !insertError) {
+    const accountBody =
+      wantAccount && accountEmail.trim()
+        ? {
+            email: accountEmail.trim(),
+            password: accountPassword,
+            username: accountUsername.trim(),
+            householdHead,
+            lastName: form.lastName,
+            firstName: form.firstName,
+            middleName: form.middleName,
+            barangay: form.barangay,
+            contactNumber: form.contactPrimary,
+            householdSize: familyMembers.length,
+          }
+        : null
+
+    // Saves right away when online; otherwise keeps it on this device and uploads later
+    const result = await submitDistribution({ row, signatureBlob: blob, fileName, account: accountBody })
+
+    if (result.queued) {
+      setAccountResult({ queued: true, hasAccount: !!accountBody })
       setSavedSerial(finalSerial)
       setStatus('success')
-    } else {
-      console.error('Upload error:', uploadError)
-      console.error('Insert error:', insertError)
-      setStatus('error')
+      return
     }
+    if (result.error) {
+      console.error('Save error:', result.error)
+      setStatus('error')
+      return
+    }
+
+    if (accountBody) {
+      setAccountResult(await createBeneficiaryAccount(accountBody))
+    }
+    setSavedSerial(finalSerial)
+    setStatus('success')
   }
 
   return (
@@ -991,7 +1043,9 @@ function NewFamilyForm({ prefillSerial }) {
 
         {status === 'success' && (
           <div className="mt-3 rounded border border-beneficiary-dark bg-beneficiary-light p-3">
-            <p className="text-xs font-semibold text-donor-dark">Distribution recorded.</p>
+            <p className="text-xs font-semibold text-donor-dark">
+              {accountResult?.queued ? 'Saved on this device — it will upload automatically when the signal returns.' : 'Distribution recorded.'}
+            </p>
             <p className="mt-1 text-xs text-beneficiary-dark">Serial number: <span className="font-bold">{savedSerial}</span> — write this on the beneficiary's physical FACED card copy.</p>
           </div>
         )}

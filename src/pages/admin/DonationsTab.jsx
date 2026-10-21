@@ -4,7 +4,9 @@ import Button from '../../components/ui/Button.jsx'
 import Badge from '../../components/ui/Badge.jsx'
 import Avatar from '../../components/ui/Avatar.jsx'
 import { supabase } from '../../lib/supabase.js'
+import { submitDonation, cachedFetch } from '../../lib/offlineQueue.js'
 import { BARANGAY_POSITIONS } from '../../components/ui/BarangayMap.jsx'
+import { CashPaymentPanel, PaymentAccountsManager } from './PaymentAccounts.jsx'
 
 /* ── Built-in donation category → item list ── */
 export const CATEGORIES = {
@@ -69,11 +71,13 @@ export function useAllCategories() {
   const [custom, setCustom] = useState([])
 
   const reload = useCallback(async () => {
-    const { data } = await supabase
-      .from('donation_categories')
-      .select('name, donation_items(name, unit)')
-      .eq('is_active', true)
-      .order('name')
+    const { data } = await cachedFetch('categories', () =>
+      supabase
+        .from('donation_categories')
+        .select('name, donation_items(name, unit)')
+        .eq('is_active', true)
+        .order('name')
+    )
     setCustom(data || [])
   }, [])
 
@@ -237,7 +241,7 @@ function DonorSuggestInput({
 
   return (
     <div className="relative">
-      <label className="mb-1 block text-xs font-semibold text-muted">{label}</label>
+      <label className="mb-1.5 block text-xs font-bold text-ink">{label}</label>
       <input
         required={required}
         type={type}
@@ -252,7 +256,7 @@ function DonorSuggestInput({
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
         onKeyDown={handleKeyDown}
-        className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin"
+        className="w-full rounded-xl border-2 border-line bg-white px-4 py-3 text-sm outline-none transition focus:border-admin focus:ring-4 focus:ring-admin/10"
       />
 
       {showList && (
@@ -334,7 +338,7 @@ function BarangaySuggestInput({ label, value, onChange, required, size = 'md' })
 
   return (
     <div className="relative">
-      <label className="mb-1 block text-xs font-semibold text-muted">{label}</label>
+      <label className="mb-1.5 block text-xs font-bold text-ink">{label}</label>
       <input
         required={required}
         autoComplete="off"
@@ -348,7 +352,7 @@ function BarangaySuggestInput({ label, value, onChange, required, size = 'md' })
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
         onKeyDown={handleKeyDown}
-        className={`w-full rounded-lg border border-line bg-white ${pad} text-sm outline-none focus:border-admin`}
+        className={`w-full rounded-xl border-2 border-line bg-white ${pad} text-sm outline-none transition focus:border-admin focus:ring-4 focus:ring-admin/10`}
       />
 
       {showList && (
@@ -389,7 +393,7 @@ function CategoryItemFields({ categories, category, item, customItem, onCategory
   return (
     <>
       <div>
-        <label className="mb-1 block text-xs font-semibold text-muted">Category</label>
+        <label className="mb-1.5 block text-xs font-bold text-ink">Category</label>
         <select
           required
           value={category}
@@ -404,7 +408,7 @@ function CategoryItemFields({ categories, category, item, customItem, onCategory
       </div>
 
       <div>
-        <label className="mb-1 block text-xs font-semibold text-muted">Item</label>
+        <label className="mb-1.5 block text-xs font-bold text-ink">Item</label>
         <select
           required
           value={item}
@@ -421,7 +425,7 @@ function CategoryItemFields({ categories, category, item, customItem, onCategory
 
       {item === OTHER && (
         <div className="sm:col-span-2">
-          <label className="mb-1 block text-xs font-semibold text-muted">Specify item name</label>
+          <label className="mb-1.5 block text-xs font-bold text-ink">Specify item name</label>
           <input
             required
             placeholder="Type the item name"
@@ -490,7 +494,7 @@ export function EditDonationRow({ donation, categories, onCancel, onSaved }) {
         />
 
         <div>
-          <label className="mb-1 block text-xs font-semibold text-muted">Quantity</label>
+          <label className="mb-1.5 block text-xs font-bold text-ink">Quantity</label>
           <input
             type="number"
             min="0"
@@ -501,7 +505,7 @@ export function EditDonationRow({ donation, categories, onCancel, onSaved }) {
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-semibold text-muted">Unit</label>
+          <label className="mb-1.5 block text-xs font-bold text-ink">Unit</label>
           <select
             value={form.unit}
             onChange={(e) => update('unit', e.target.value)}
@@ -521,7 +525,7 @@ export function EditDonationRow({ donation, categories, onCancel, onSaved }) {
         </div>
 
         <div className="sm:col-span-2">
-          <label className="mb-1 block text-xs font-semibold text-muted">Description / notes</label>
+          <label className="mb-1.5 block text-xs font-bold text-ink">Description / notes</label>
           <textarea
             rows={2}
             value={form.description}
@@ -532,7 +536,7 @@ export function EditDonationRow({ donation, categories, onCancel, onSaved }) {
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-semibold text-muted">Donor type</label>
+          <label className="mb-1.5 block text-xs font-bold text-ink">Donor type</label>
           <select
             value={form.donorType}
             onChange={(e) => update('donorType', e.target.value)}
@@ -543,7 +547,7 @@ export function EditDonationRow({ donation, categories, onCancel, onSaved }) {
           <p className="mt-1 text-xs text-faint">{DONOR_TYPE_HINTS[form.donorType]}</p>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-semibold text-muted">Recorded by (staff name)</label>
+          <label className="mb-1.5 block text-xs font-bold text-ink">Recorded by (staff name)</label>
           <input
             value={form.recordedBy}
             onChange={(e) => update('recordedBy', e.target.value)}
@@ -734,6 +738,24 @@ export function DonationBox({ d, isOpen, onToggle, actions }) {
   )
 }
 
+/* ── One numbered section of the donation form (all sections live inside ONE card) ── */
+function SectionCard({ step, title, hint, children }) {
+  return (
+    <section className="border-b border-line-soft">
+      <div className="flex items-center gap-3 bg-gradient-to-r from-admin-light/60 to-white px-6 py-3.5">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-admin text-xs font-bold text-white shadow">
+          {step}
+        </span>
+        <div>
+          <h2 className="text-sm font-bold text-ink">{title}</h2>
+          {hint && <p className="text-[11px] text-faint">{hint}</p>}
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-4 px-6 py-5 sm:grid-cols-2">{children}</div>
+    </section>
+  )
+}
+
 export default function DonationsTab() {
   const { categories: allCategories, reload: reloadCategories } = useAllCategories()
 
@@ -772,11 +794,13 @@ export default function DonationsTab() {
   }
 
   async function loadDonors() {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('role', 'donor')
-      .order('full_name', { ascending: true })
+    const { data } = await cachedFetch('donors', () =>
+      supabase
+        .from('profiles')
+        .select('*')
+        .eq('role', 'donor')
+        .order('full_name', { ascending: true })
+    )
     setDonors(data || [])
   }
 
@@ -908,7 +932,7 @@ export default function DonationsTab() {
 
     const finalItem = (form.item === OTHER ? form.customItem : form.item).trim()
 
-    const { error } = await supabase.from('donations').insert({
+    const row = {
       donor_id: donorId,
       donor_name: form.donorName,
       category: finalCategory,
@@ -921,14 +945,17 @@ export default function DonationsTab() {
       description: form.description,
       is_private: form.isPrivate,
       status: 'confirmed',
-    })
+    }
 
-    setStatus(error ? 'error' : 'success')
+    // Saves right away when online; otherwise keeps it on this device and uploads later
+    const { error, queued } = await submitDonation({ row, donorEmail: form.donorEmail.trim() })
+
+    setStatus(error ? 'error' : queued ? 'queued' : 'success')
     if (!error) {
       // Keep any non-built-in category (and its item) for next time. The donation is already saved,
       // so a failure here never blocks it.
       const isCustom = !Object.prototype.hasOwnProperty.call(CATEGORIES, finalCategory)
-      if (isCustom) {
+      if (isCustom && !queued) {
         const ok = await saveCustomCategory(finalCategory, finalItem, form.unit)
         if (ok) {
           await reloadCategories()
@@ -954,20 +981,36 @@ export default function DonationsTab() {
         description: '',
         isPrivate: false,
       })
-      loadDonations()
+      if (!queued) loadDonations()
     }
   }
 
+  const cashItemName = (form.item === OTHER ? form.customItem : form.item) || ''
+  const isCash =
+    /cash|pera|gcash|php/i.test(cashItemName) ||
+    /cash/i.test(isNewCategory ? form.customCategory : form.category)
+
   return (
     <>
-      <div className="mb-6 rounded-card bg-white/90 p-5 shadow-[0_2px_6px_rgba(0,0,0,0.08)]">
-  <h1 className="mb-1 text-xl font-bold text-admin-dark">Donations</h1>
-  <p className="text-sm text-faint">Verify donors and record entries on their behalf. To edit or archive an entry, open it from Inventory.</p>
-</div>
+      {/* ── Header ── */}
+      <div className="mb-4 flex items-center gap-4 rounded-card bg-white/90 px-5 py-4 shadow-[0_2px_6px_rgba(0,0,0,0.08)]">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-admin to-admin-dark text-white shadow-md">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+            <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z" />
+          </svg>
+        </span>
+        <div>
+          <h1 className="text-xl font-bold leading-tight text-admin-dark">Donations</h1>
+          <p className="text-xs text-faint">
+            Verify donors and record entries on their behalf. To edit or archive an entry, open it from Inventory.
+          </p>
+        </div>
+      </div>
 
-      <Card className="p-6">
-        <h2 className="mb-4 text-base font-bold text-ink">Record donation entry</h2>
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <Card className="overflow-hidden p-0">
+      <form onSubmit={handleSubmit}>
+        {/* ── 1. Donor ── */}
+        <SectionCard step="1" title="Who donated?" hint="Registered donors show up as you type, so the donation lands on their dashboard.">
           <div className="sm:col-span-2">
             <DonorSuggestInput
               label="Donor name"
@@ -992,7 +1035,7 @@ export default function DonationsTab() {
             />
 
             {matchedDonor && (
-              <div className="mt-2 flex items-center gap-3 rounded-lg border border-donor-light bg-donor-light px-3 py-2.5">
+              <div className="mt-3 flex items-center gap-3 rounded-xl border-2 border-donor-dark/30 bg-donor-light px-3 py-2.5">
                 <Avatar name={donorDisplayName(matchedDonor)} size="sm" />
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-bold text-donor-dark">
@@ -1014,26 +1057,55 @@ export default function DonationsTab() {
             )}
 
             {!matchedDonor && !form.donorEmail.trim() && form.donorName.trim().length > 1 && (
-              <div className="mt-2 rounded-lg bg-warn-bg px-3 py-2 text-[11px] text-warn-text">
+              <div className="mt-3 rounded-xl bg-warn-bg px-3 py-2 text-[11px] text-warn-text">
                 Not linked to a donor account yet. Pick the donor from the suggestions or enter their email,
                 otherwise this donation won't show on their dashboard.
               </div>
             )}
 
             {!matchedDonor && form.donorEmail.includes('@') && (
-              <div className="mt-2 rounded-lg bg-warn-bg px-3 py-2 text-[11px] text-warn-text">
+              <div className="mt-3 rounded-xl bg-warn-bg px-3 py-2 text-[11px] text-warn-text">
                 No registered account uses this email. The donation will still be recorded, but it won't be linked to a donor dashboard.
               </div>
             )}
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-semibold text-muted">Category</label>
+            <label className="mb-1.5 block text-xs font-bold text-ink">Donor type</label>
+            <select
+              required
+              value={form.donorType}
+              onChange={(e) => update('donorType', e.target.value)}
+              className="w-full rounded-xl border-2 border-line bg-white px-4 py-3 text-sm outline-none transition focus:border-admin focus:ring-4 focus:ring-admin/10"
+            >
+              {DONOR_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+            <p className="mt-1 text-xs text-faint">{DONOR_TYPE_HINTS[form.donorType]}</p>
+          </div>
+
+          <label className="flex cursor-pointer items-center gap-3 self-start rounded-xl border-2 border-line bg-white px-4 py-3 text-sm text-ink transition hover:border-admin sm:mt-6">
+            <input
+              type="checkbox"
+              checked={form.isPrivate}
+              onChange={(e) => update('isPrivate', e.target.checked)}
+              className="h-4 w-4"
+            />
+            <span>
+              <span className="block text-xs font-bold">Keep donor private</span>
+              <span className="block text-[11px] text-faint">Hidden from the public feed</span>
+            </span>
+          </label>
+        </SectionCard>
+
+        {/* ── 2. What was donated ── */}
+        <SectionCard step="2" title="What was donated?" hint="The unit is suggested from the item. Change it if needed.">
+          <div>
+            <label className="mb-1.5 block text-xs font-bold text-ink">Category</label>
             <select
               required
               value={form.category}
               onChange={(e) => handleCategoryChange(e.target.value)}
-              className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin"
+              className="w-full rounded-xl border-2 border-line bg-white px-4 py-3 text-sm outline-none transition focus:border-admin focus:ring-4 focus:ring-admin/10"
             >
               <option value="" disabled>Select category</option>
               {Object.keys(allCategories).map((c) => (
@@ -1045,24 +1117,24 @@ export default function DonationsTab() {
 
           {isNewCategory ? (
             <div>
-              <label className="mb-1 block text-xs font-semibold text-muted">New category name</label>
+              <label className="mb-1.5 block text-xs font-bold text-ink">New category name</label>
               <input
                 required
                 placeholder="e.g. Cash Assistance"
                 value={form.customCategory}
                 onChange={(e) => update('customCategory', e.target.value)}
-                className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin"
+                className="w-full rounded-xl border-2 border-line bg-white px-4 py-3 text-sm outline-none transition focus:border-admin focus:ring-4 focus:ring-admin/10"
               />
             </div>
           ) : (
             <div>
-              <label className="mb-1 block text-xs font-semibold text-muted">Item</label>
+              <label className="mb-1.5 block text-xs font-bold text-ink">Item</label>
               <select
                 required
                 value={form.item}
                 disabled={!form.category}
                 onChange={(e) => handleItemChange(e.target.value)}
-                className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin disabled:bg-line-soft disabled:text-faint"
+                className="w-full rounded-xl border-2 border-line bg-white px-4 py-3 text-sm outline-none transition focus:border-admin focus:ring-4 focus:ring-admin/10 disabled:bg-line-soft disabled:text-faint"
               >
                 <option value="" disabled>{form.category ? 'Select item' : 'Pick a category first'}</option>
                 {(form.category ? [...(allCategories[form.category] || []), OTHER] : []).map((i) => (
@@ -1074,7 +1146,7 @@ export default function DonationsTab() {
 
           {form.item === OTHER && (
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-semibold text-muted">
+              <label className="mb-1.5 block text-xs font-bold text-ink">
                 {isNewCategory ? 'Item name (first item in this new category)' : 'Specify item name'}
               </label>
               <input
@@ -1082,7 +1154,7 @@ export default function DonationsTab() {
                 placeholder={isNewCategory ? 'e.g. Cash' : 'Type the item name'}
                 value={form.customItem}
                 onChange={(e) => handleCustomItemChange(e.target.value)}
-                className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin"
+                className="w-full rounded-xl border-2 border-line bg-white px-4 py-3 text-sm outline-none transition focus:border-admin focus:ring-4 focus:ring-admin/10"
               />
               {isNewCategory && (
                 <p className="mt-1 text-xs text-faint">
@@ -1093,20 +1165,20 @@ export default function DonationsTab() {
           )}
 
           <div>
-            <label className="mb-1 block text-xs font-semibold text-muted">Quantity</label>
+            <label className="mb-1.5 block text-xs font-bold text-ink">{isCash ? 'Amount' : 'Quantity'}</label>
             <input
               required
               type="number"
               min="0"
               step="any"
-              placeholder="e.g. 20"
+              placeholder={isCash ? 'e.g. 1000' : 'e.g. 20'}
               value={form.quantity}
               onChange={(e) => update('quantity', e.target.value)}
-              className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin"
+              className="w-full rounded-xl border-2 border-line bg-white px-4 py-3 text-sm outline-none transition focus:border-admin focus:ring-4 focus:ring-admin/10"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-semibold text-muted">Unit</label>
+            <label className="mb-1.5 block text-xs font-bold text-ink">Unit</label>
             <select
               required
               value={form.unit}
@@ -1114,12 +1186,12 @@ export default function DonationsTab() {
                 setUnitTouched(true)
                 update('unit', e.target.value)
               }}
-              className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin"
+              className="w-full rounded-xl border-2 border-line bg-white px-4 py-3 text-sm outline-none transition focus:border-admin focus:ring-4 focus:ring-admin/10"
             >
               {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
             </select>
             {form.item && suggestedUnit && form.unit === suggestedUnit && (
-              <p className="mt-1 text-xs text-faint">✨ Unit suggested from the item. Change it if needed.</p>
+              <p className="mt-1 text-xs text-faint">✨ Unit suggested from the item.</p>
             )}
             {form.item && suggestedUnit && form.unit !== suggestedUnit && (
               <button
@@ -1135,6 +1207,11 @@ export default function DonationsTab() {
             )}
           </div>
 
+          {isCash && <CashPaymentPanel />}
+        </SectionCard>
+
+        {/* ── 3. Where from + who recorded ── */}
+        <SectionCard step="3" title="Where from & who recorded it" hint="The barangay the donation came from, and the staff member entering it.">
           <div className="sm:col-span-2">
             <BarangaySuggestInput
               label="Barangay"
@@ -1144,8 +1221,19 @@ export default function DonationsTab() {
             />
           </div>
 
+          <div>
+            <label className="mb-1.5 block text-xs font-bold text-ink">Recorded by (staff name)</label>
+            <input
+              required
+              placeholder="e.g. Name"
+              value={form.recordedBy}
+              onChange={(e) => update('recordedBy', e.target.value)}
+              className="w-full rounded-xl border-2 border-line bg-white px-4 py-3 text-sm outline-none transition focus:border-admin focus:ring-4 focus:ring-admin/10"
+            />
+          </div>
+
           <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-semibold text-muted">
+            <label className="mb-1.5 block text-xs font-bold text-ink">
               Description / notes <span className="font-normal text-faint">(optional)</span>
             </label>
             <textarea
@@ -1153,61 +1241,35 @@ export default function DonationsTab() {
               placeholder="e.g. Brand new, unopened. Expiry date December 2026. Donated for the Sitio Kahusayan families."
               value={form.description}
               onChange={(e) => update('description', e.target.value)}
-              className="w-full resize-none rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin"
+              className="w-full resize-none rounded-xl border-2 border-line bg-white px-4 py-3 text-sm outline-none transition focus:border-admin focus:ring-4 focus:ring-admin/10"
             />
           </div>
+        </SectionCard>
 
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-muted">Donor type</label>
-            <select
-              required
-              value={form.donorType}
-              onChange={(e) => update('donorType', e.target.value)}
-              className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin"
-            >
-              {DONOR_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
-            <p className="mt-1 text-xs text-faint">{DONOR_TYPE_HINTS[form.donorType]}</p>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-muted">Recorded by (staff name)</label>
-            <input
-              required
-              placeholder="e.g. Name"
-              value={form.recordedBy}
-              onChange={(e) => update('recordedBy', e.target.value)}
-              className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin"
-            />
-          </div>
-
-          <label className="flex items-center gap-2 text-sm text-muted sm:col-span-2">
-            <input
-              type="checkbox"
-              checked={form.isPrivate}
-              onChange={(e) => update('isPrivate', e.target.checked)}
-            />
-            Mark donor identity as private (hidden from the public feed)
-          </label>
-
-          <div className="sm:col-span-2">
-            <Button type="submit" variant="admin">
-              Record donation
-            </Button>
-          </div>
+        {/* ── Submit ── */}
+        <div className="flex flex-wrap items-center gap-4 bg-line-soft/30 px-6 py-5">
+          <Button type="submit" variant="admin">
+            {status === 'saving' ? 'Saving…' : 'Record donation'}
+          </Button>
 
           {status === 'success' && (
-            <p className="text-sm font-semibold text-donor-dark sm:col-span-2">
-              Donation recorded. {savedNote}
+            <p className="text-sm font-semibold text-donor-dark">✓ Donation recorded. {savedNote}</p>
+          )}
+          {status === 'queued' && (
+            <p className="text-sm font-semibold text-warn-text">
+              Saved on this device. It will upload automatically when the signal returns.
             </p>
           )}
           {status === 'error' && (
-            <p className="text-sm font-semibold text-admin sm:col-span-2">
+            <p className="text-sm font-semibold text-admin">
               Could not save — please check the fields and try again.
             </p>
           )}
-        </form>
-      </Card>
+        </div>
+      </form>
 
+      <PaymentAccountsManager embedded />
+      </Card>
     </>
   )
 }
