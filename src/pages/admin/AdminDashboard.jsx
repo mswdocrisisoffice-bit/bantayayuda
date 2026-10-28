@@ -22,6 +22,7 @@ const icons = {
   inventory: <><path d="M21 8 12 3 3 8v8l9 5 9-5z" /><path d="M3 8l9 5 9-5" /><path d="M12 13v8" /></>,
   reports: <><path d="M4 20V10" /><path d="M10 20V4" /><path d="M16 20v-7" /><path d="M22 20H2" /></>,
   generator: <><path d="M6 2h9l5 5v15a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" /><path d="M15 2v5h5" /><path d="M8 13h8" /><path d="M8 17h5" /></>,
+  ris: <><rect x="5" y="3" width="14" height="18" rx="2" /><path d="M9 3h6v3H9z" /><path d="M9 11h6M9 15h6" /></>,
   archive: <><rect x="2.5" y="4" width="19" height="4.5" rx="1" /><path d="M4 8.5V19a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V8.5" /><path d="M10 12.5h4" /></>,
   barangay: <><path d="M12 2 3 7v13h18V7z" /><path d="M9 21v-6h6v6" /></>,
   logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" /></>,
@@ -47,6 +48,7 @@ const TABS = [
   { label: 'Reports', to: '/admin/reports', icon: 'reports' },
   { label: 'Report generator', to: '/admin/report-generator', icon: 'generator' },
   { label: 'Archive', to: '/admin/archive', icon: 'archive' },
+  { label: 'RIS', to: '/admin/ris', icon: 'ris' },
 ]
 
 export function AdminTabs({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) {
@@ -62,7 +64,7 @@ export function AdminTabs({ collapsed, setCollapsed, mobileOpen, setMobileOpen }
   const groups = [
     { title: null, items: [TABS[0]] },
     { title: 'Operations', items: [TABS[2], TABS[3]] },
-    { title: 'Data & Reports', items: [TABS[1], TABS[4], TABS[5], TABS[6]] },
+    { title: 'Data & Reports', items: [TABS[1], TABS[4], TABS[5], TABS[6], TABS[8]] },
     { title: null, items: [TABS[7]] },
   ]
 

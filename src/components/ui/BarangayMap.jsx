@@ -155,7 +155,9 @@ export default function BarangayMap({ height = '320px' }) {
   }, [])
 
   return (
-    <div>
+    // `isolate` keeps Leaflet's internal z-indexes (panes 400, controls 1000) inside this box,
+    // so the map can never paint on top of the PIN lock screen or other overlays.
+    <div className="relative z-0 isolate">
       <div className="mb-2 flex flex-wrap gap-4 text-xs font-semibold text-muted">
         <label className="flex items-center gap-1.5">
           <input type="checkbox" checked={showDonors} onChange={(e) => setShowDonors(e.target.checked)} />

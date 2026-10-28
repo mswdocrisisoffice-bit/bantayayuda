@@ -14,6 +14,7 @@ import BeneficiaryRegistryTab from './pages/admin/BeneficiaryRegistryTab.jsx'
 import RecordDistributionTab from './pages/admin/RecordDistributionTab.jsx'
 import InventoryTab from './pages/admin/InventoryTab.jsx'
 import ReportsTab from './pages/admin/ReportsTab.jsx'
+import RisTab from './pages/admin/RisTab.jsx'
 import ReportGenerator from './pages/admin/ReportGenerator.jsx'
 import ArchiveTab from './pages/admin/ArchiveTab.jsx'
 
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="/admin/distribution" element={<RecordDistributionTab />} />
         <Route path="/admin/inventory" element={<InventoryTab />} />
         <Route path="/admin/reports" element={<ReportsTab />} />
+        <Route path="/admin/ris" element={<RisTab />} />
         <Route path="/admin/report-generator" element={<ReportGenerator />} />
         <Route path="/admin/archive" element={<ArchiveTab />} />
       </Route>
