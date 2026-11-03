@@ -19,7 +19,6 @@ import ReportGenerator from './pages/admin/ReportGenerator.jsx'
 import ArchiveTab from './pages/admin/ArchiveTab.jsx'
 
 import BeneficiaryLogin from './pages/beneficiary/BeneficiaryLogin.jsx'
-import BeneficiaryRegister from './pages/beneficiary/BeneficiaryRegister.jsx'
 import BeneficiaryDashboard from './pages/beneficiary/BeneficiaryDashboard.jsx'
 import AidHistory from './pages/beneficiary/AidHistory.jsx'
 
@@ -49,9 +48,8 @@ export default function App() {
         <Route path="/admin/archive" element={<ArchiveTab />} />
       </Route>
 
-      {/* Beneficiary */}
+      {/* Beneficiary: login only. Accounts are created by staff in Record distribution */}
       <Route path="/beneficiary/login" element={<BeneficiaryLogin />} />
-      <Route path="/beneficiary/register" element={<BeneficiaryRegister />} />
       <Route path="/beneficiary/dashboard" element={<BeneficiaryDashboard />} />
       <Route path="/beneficiary/history" element={<AidHistory />} />
     </Routes>

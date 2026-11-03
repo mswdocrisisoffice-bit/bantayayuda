@@ -57,12 +57,9 @@ export default function BeneficiaryLogin() {
           </Button>
         </form>
 
-        <Link
-          to="/beneficiary/register"
-          className="mt-4 block text-center text-xs font-semibold text-beneficiary-dark"
-        >
-          Household not registered yet? Register
-        </Link>
+        <p className="mt-4 text-center text-[11px] leading-relaxed text-faint">
+         No account yet? Please ask your barangay office or the MSWDO.
+        </p>
 
         <Link to="/" className="mt-3 block text-center text-xs text-faint">
           ← Back to home
