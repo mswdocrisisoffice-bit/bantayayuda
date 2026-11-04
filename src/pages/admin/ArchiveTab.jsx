@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import Card from '../../components/ui/Card.jsx'
+import PageBanner from '../../components/ui/PageBanner.jsx'
 import { supabase } from '../../lib/supabase.js'
 
 /* ── Small inline icons (same style as Reports) ── */
@@ -193,18 +194,12 @@ export default function ArchiveTab() {
   return (
     <div className="w-full max-w-none">
       {/* ── Header ── */}
-      <div className="mb-3 flex items-center gap-3 rounded-card bg-white/90 px-4 py-4 shadow-[0_2px_6px_rgba(0,0,0,0.08)] sm:px-5">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-admin-light text-admin-dark">
-          <Icon path={icons.archive} className="h-5 w-5" />
-        </span>
-        <div>
-          <h1 className="text-lg font-bold leading-tight text-admin-dark">Archive</h1>
-          <p className="text-xs text-faint">
-            Everything archived across the system. <b>Restore</b> brings it back to its active list.{' '}
-            <b>Delete</b> removes it for good and can't be undone.
-          </p>
-        </div>
-      </div>
+      <PageBanner
+        title="Archive"
+        description="Everything archived across the system. Restore brings it back to its active list. Delete removes it for good and can't be undone."
+        icon={<Icon path={icons.archive} className="h-6 w-6 sm:h-7 sm:w-7" />}
+        className="mb-3"
+      />
 
       {/* ── Tabs ── */}
       <div role="tablist" className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">

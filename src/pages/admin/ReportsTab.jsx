@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
 import Avatar from '../../components/ui/Avatar.jsx'
+import PageBanner from '../../components/ui/PageBanner.jsx'
 import { CATEGORIES, UNITS } from './DonationsTab.jsx'
 import ReportCharts from './ReportCharts.jsx'
 import DonorRegistry from './DonorRegistry.jsx'
@@ -1178,24 +1179,20 @@ export default function ReportsTab() {
       `}</style>
 
       {/* ── Header ── */}
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-card bg-white/90 px-4 py-4 shadow-[0_2px_6px_rgba(0,0,0,0.08)] sm:px-5">
-        <div className="flex items-center gap-3">
-          <span className="no-print flex h-10 w-10 items-center justify-center rounded-xl bg-admin-light text-admin-dark">
-            <Icon path={icons.chart} className="h-5 w-5" />
-          </span>
-          <div>
-            <h1 className="text-lg font-bold leading-tight text-admin-dark">Reports</h1>
-            <p className="text-xs text-faint">Filter, search, export, or print for DSWD / LGU reporting</p>
-          </div>
-        </div>
+      <PageBanner
+        title="Reports"
+        description="Filter, search, export, or print for DSWD / LGU reporting."
+        icon={<Icon path={icons.chart} className="h-6 w-6 sm:h-7 sm:w-7" />}
+        className="no-print mb-3"
+      >
         <button
           onClick={handlePrint}
-          className="no-print inline-flex items-center gap-2 rounded-xl bg-admin px-4 py-2.5 text-xs font-bold text-white shadow transition duration-200 hover:-translate-y-0.5 hover:bg-admin-dark hover:shadow-md active:translate-y-0"
+          className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-admin-dark shadow transition duration-200 hover:-translate-y-0.5 hover:bg-white/90 hover:shadow-md active:translate-y-0"
         >
           <Icon path={icons.print} className="h-4 w-4" />
           Print report
         </button>
-      </div>
+      </PageBanner>
 
       {/* ── Filters: one tidy card ── */}
       <Card className="no-print mb-3 p-4">

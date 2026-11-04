@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import manoloFortichSeal from '../../assets/manolo-fortich-seal.png'
 import bagongPilipinasLogo from '../../assets/bagong-pilipinas-logo.png'
+import PageBanner from '../../components/ui/PageBanner.jsx'
 
 // ── Editable text block (locked template, editable content) ──
 function Editable({ value, onChange, className = '', as = 'div', placeholder = '' }) {
@@ -209,24 +210,26 @@ export default function ReportGenerator() {
       `}</style>
 
       <div className="no-print">
-        <div className="no-print mb-6 rounded-card bg-white/90 p-5 shadow-[0_2px_6px_rgba(0,0,0,0.08)]">
-          <h1 className="mb-1 text-xl font-bold text-admin-dark">Report generator</h1>
-          <p className="text-xs text-faint">
-            Click any text, photo, or signature below to edit it. The letterhead layout stays
-            fixed — only the content changes.
-          </p>
-          <p className="mt-1 text-[11px] text-faint">
-            Tip: in the print window, turn off “Headers and footers” so only the report is printed.
-          </p>
-        </div>
-        <div className="mb-4 flex justify-end">
+        <PageBanner
+          title="Report generator"
+          description="Click any text, photo, or signature below to edit it. The letterhead layout stays fixed — only the content changes. Tip: in the print window, turn off “Headers and footers”."
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6 sm:h-7 sm:w-7">
+              <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+              <path d="M14 3v5h5" />
+              <path d="M9 13h6" />
+              <path d="M9 17h6" />
+            </svg>
+          }
+          className="mb-4"
+        >
           <button
             onClick={() => window.print()}
-            className="rounded-lg bg-admin px-5 py-2 text-sm font-bold text-white hover:bg-admin-dark"
+            className="rounded-lg bg-white px-5 py-2 text-sm font-bold text-admin-dark shadow transition hover:bg-white/90"
           >
             Print / Save as PDF
           </button>
-        </div>
+        </PageBanner>
       </div>
 
       {/* ── Printable page ── */}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Card from '../../components/ui/Card.jsx'
 import Avatar from '../../components/ui/Avatar.jsx'
+import PageBanner from '../../components/ui/PageBanner.jsx'
 import { supabase } from '../../lib/supabase.js'
 
 const emptyMember = { name: '', relation: '', age: '', sex: '' }
@@ -350,15 +351,12 @@ export default function BeneficiaryRegistryTab() {
   return (
     <>
       {/* ── Header ── */}
-      <div className="mb-3 flex items-center gap-3 rounded-card bg-white/90 px-4 py-4 shadow-[0_2px_6px_rgba(0,0,0,0.08)] sm:px-5">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-admin-light text-admin-dark">
-          <Icon path={icons.users} className="h-5 w-5" />
-        </span>
-        <div>
-          <h1 className="text-lg font-bold leading-tight text-admin-dark">Beneficiary registry</h1>
-          <p className="text-xs text-faint">Search households and check for duplicate aid</p>
-        </div>
-      </div>
+      <PageBanner
+        title="Beneficiary registry"
+        description="Search households and check for duplicate aid."
+        icon={<Icon path={icons.users} className="h-6 w-6 sm:h-7 sm:w-7" />}
+        className="mb-3"
+      />
 
       {/* ── Summary ── */}
       <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">

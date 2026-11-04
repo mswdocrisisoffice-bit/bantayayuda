@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import Card from '../../components/ui/Card.jsx'
+import PageBanner from '../../components/ui/PageBanner.jsx'
 import { supabase } from '../../lib/supabase.js'
 import manoloFortichSeal from '../../assets/manolo-fortich-seal.png'
 import bagongPilipinasLogo from '../../assets/bagong-pilipinas-logo.png'
@@ -693,23 +694,19 @@ export default function RisTab() {
   /* ───────── LIST VIEW ───────── */
   return (
     <>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-card bg-white/90 px-4 py-4 shadow-[0_2px_6px_rgba(0,0,0,0.08)] sm:px-5">
-        <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-admin-light text-admin-dark">
-            <Icon path={icons.doc} className="h-5 w-5" />
-          </span>
-          <div>
-            <h1 className="text-lg font-bold leading-tight text-admin-dark">Requisition and Issue Slip (RIS)</h1>
-            <p className="text-xs text-faint">Record items taken out of stock, then print the official RIS form.</p>
-          </div>
-        </div>
+      <PageBanner
+        title="Requisition and Issue Slip (RIS)"
+        description="Record items taken out of stock, then print the official RIS form."
+        icon={<Icon path={icons.doc} className="h-6 w-6 sm:h-7 sm:w-7" />}
+        className="mb-3"
+      >
         <button
           onClick={newRis}
-          className="inline-flex items-center gap-2 rounded-xl bg-admin px-4 py-2.5 text-xs font-bold text-white shadow transition duration-200 hover:-translate-y-0.5 hover:bg-admin-dark hover:shadow-md"
+          className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-admin-dark shadow transition duration-200 hover:-translate-y-0.5 hover:bg-white/90 hover:shadow-md"
         >
           <Icon path={icons.plus} /> New RIS
         </button>
-      </div>
+      </PageBanner>
 
       {toast && (
         <div className={`mb-3 rounded-lg px-4 py-3 text-sm font-semibold ${toast.type === 'ok' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
-import { AdminTabs, TABS, icons as adminIcons } from './AdminDashboard.jsx'
+import { AdminTabs, icons as adminIcons } from './AdminDashboard.jsx'
 import manoloBg from '../../assets/manolo-fortich-bg.jpg'
 import OfflineStatus from '../../components/OfflineStatus.jsx'
 import PinGate from '../../components/PinGate.jsx'
@@ -26,7 +26,6 @@ export default function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const { pathname } = useLocation()
-  const currentTab = TABS.find((tab) => pathname === tab.to)
 
   return (
     <div className="relative min-h-screen">
@@ -55,21 +54,7 @@ export default function AdminLayout() {
         />
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="sticky top-0 z-30 flex items-center gap-3 border-b border-line bg-white px-4 py-3 lg:hidden">
-            <button onClick={() => setMobileOpen(true)} className="text-ink">
-              <Icon
-                path={<><path d="M3 6h18" /><path d="M3 12h18" /><path d="M3 18h18" /></>}
-                className="h-5 w-5"
-              />
-            </button>
-            <div className="min-w-0">
-              <div className="truncate text-sm font-bold leading-tight text-admin-dark">
-                {currentTab?.label || 'BantayAyuda Admin'}
-              </div>
-              <div className="text-[10px] leading-tight text-faint">BantayAyuda · Manolo Fortich</div>
-            </div>
-          </div>
-
+          {/* No top bar on phones — the bottom navigation is the only menu there. */}
           <div className="mx-auto w-full max-w-5xl flex-1 px-3 pb-28 pt-4 sm:px-4 sm:py-8">
             <Outlet />
           </div>

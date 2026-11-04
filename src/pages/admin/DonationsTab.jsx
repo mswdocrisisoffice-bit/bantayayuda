@@ -3,6 +3,7 @@ import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
 import Badge from '../../components/ui/Badge.jsx'
 import Avatar from '../../components/ui/Avatar.jsx'
+import PageBanner from '../../components/ui/PageBanner.jsx'
 import { supabase } from '../../lib/supabase.js'
 import { submitDonation, cachedFetch } from '../../lib/offlineQueue.js'
 import { BARANGAY_POSITIONS } from '../../components/ui/BarangayMap.jsx'
@@ -993,19 +994,16 @@ export default function DonationsTab() {
   return (
     <>
       {/* ── Header ── */}
-      <div className="mb-4 flex items-center gap-4 rounded-card bg-white/90 px-4 py-4 shadow-[0_2px_6px_rgba(0,0,0,0.08)] sm:px-5">
-        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-admin to-admin-dark text-white shadow-md">
+      <PageBanner
+        title="Donations"
+        description="Verify donors and record entries on their behalf. To edit or archive an entry, open it from Inventory."
+        icon={
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
             <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z" />
           </svg>
-        </span>
-        <div>
-          <h1 className="text-xl font-bold leading-tight text-admin-dark">Donations</h1>
-          <p className="text-xs text-faint">
-            Verify donors and record entries on their behalf. To edit or archive an entry, open it from Inventory.
-          </p>
-        </div>
-      </div>
+        }
+        className="mb-4"
+      />
 
       <Card className="overflow-hidden p-0">
       <form onSubmit={handleSubmit}>

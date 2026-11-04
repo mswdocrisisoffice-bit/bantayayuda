@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import dswdLogo from '../../assets/dswd-logo.png'
 import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
+import PageBanner from '../../components/ui/PageBanner.jsx'
 import ESignatureCanvas from '../../components/ESignatureCanvas.jsx'
 import { BARANGAY_POSITIONS } from '../../components/ui/BarangayMap.jsx'
 import { supabase } from '../../lib/supabase.js'
@@ -1143,14 +1144,12 @@ export default function RecordDistributionTab() {
 
   return (
     <>
-      <div className="mb-6 flex items-center gap-3 rounded-card bg-white/90 p-4 shadow-[0_2px_6px_rgba(0,0,0,0.08)] sm:p-5">
-        <img src={dswdLogo} alt="DSWD logo" className="h-12 w-12 rounded-full object-contain" />
-        <div>
-          <h1 className="text-xl font-bold text-admin-dark">Record distribution</h1>
-          <p className="text-xs text-faint">Family Assistance Card in Emergencies and Disasters (FACED)</p>
-          <p className="mt-1 text-xs text-faint">Locked until the family head confirms with a thumbmark</p>
-        </div>
-      </div>
+      <PageBanner
+        title="Record distribution"
+        description="Family Assistance Card in Emergencies and Disasters (FACED) · Locked until the family head confirms with a thumbmark."
+        icon={<img src={dswdLogo} alt="DSWD logo" className="h-9 w-9 rounded-full bg-white object-contain p-0.5 sm:h-11 sm:w-11" />}
+        className="mb-4"
+      />
 
       {mode && (
         <button
