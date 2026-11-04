@@ -189,11 +189,12 @@ export default function InventoryTab() {
             />
           </div>
 
-          {/* Category filter chips, each with its category color dot */}
-          <div className="mb-5 flex flex-wrap gap-2">
+          {/* Category filter chips, each with its category color dot.
+              On a phone they stay on one swipeable row instead of stacking into 4 lines. */}
+          <div className="-mx-4 mb-5 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0 sm:pb-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <button
               onClick={() => setActiveCategory('All')}
-              className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold transition ${
+              className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-[11px] font-semibold transition ${
                 activeCategory === 'All'
                   ? 'border-admin bg-admin text-white'
                   : 'border-line-soft bg-white text-muted hover:border-admin hover:text-admin-dark'
@@ -208,7 +209,7 @@ export default function InventoryTab() {
                 <button
                   key={cat}
                   onClick={() => setActiveCategory(cat)}
-                  className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition"
+                  className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1.5 text-[11px] font-semibold transition"
                   style={
                     active
                       ? { background: c.accent, borderColor: c.accent, color: '#fff' }
@@ -255,7 +256,8 @@ export default function InventoryTab() {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                  {/* Phone: one clear row per item. Tablet/desktop: the colored tiles. */}
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4">
                     {rows.map((i) => {
                       const qty = i.quantity_on_hand
                       const isOut = qty <= 0
@@ -267,7 +269,7 @@ export default function InventoryTab() {
                           tabIndex={0}
                           onClick={open}
                           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') open() }}
-                          className="flex min-h-[185px] cursor-pointer flex-col justify-between rounded-lg border border-t-4 p-4 text-center transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-admin/40"
+                          className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-t-4 p-3 text-left transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-admin/40 sm:min-h-[185px] sm:flex-col sm:justify-between sm:p-4 sm:text-center"
                           style={{
                             background: c.bg,
                             borderColor: c.border,
@@ -275,24 +277,32 @@ export default function InventoryTab() {
                             opacity: isOut ? 0.75 : 1,
                           }}
                         >
-                          <div className="text-sm font-semibold leading-tight text-ink">{i.item}</div>
+                          <div className="min-w-0 flex-1 sm:w-full sm:flex-none">
+                            <div className="text-sm font-semibold leading-tight text-ink">{i.item}</div>
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2 sm:hidden">
+                              <StatusBadge qty={qty} />
+                              <span className="text-[10px] font-semibold" style={{ color: c.accent }}>
+                                View donors →
+                              </span>
+                            </div>
+                          </div>
 
-                          <div>
+                          <div className="shrink-0 text-right sm:text-center">
                             <div
-                              className="text-3xl font-bold"
+                              className="text-2xl font-bold leading-none sm:text-3xl"
                               style={{ color: isOut ? '#9A9A92' : c.accent }}
                             >
                               {qty}
                             </div>
                             <span
-                              className="mt-1 inline-block rounded-md px-2.5 py-0.5 text-xs font-bold"
+                              className="mt-1 inline-block rounded-md px-2 py-0.5 text-[11px] font-bold sm:px-2.5 sm:text-xs"
                               style={{ background: '#fff', color: c.accent }}
                             >
                               {i.unit}
                             </span>
                           </div>
 
-                          <div>
+                          <div className="hidden sm:block">
                             <StatusBadge qty={qty} />
                             <div className="mt-1.5 text-[10px] font-semibold" style={{ color: c.accent }}>
                               View donors →

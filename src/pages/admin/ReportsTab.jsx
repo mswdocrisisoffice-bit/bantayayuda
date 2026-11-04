@@ -1201,7 +1201,7 @@ export default function ReportsTab() {
       <Card className="no-print mb-3 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           {/* Period: one segmented control, the current choice is highlighted */}
-          <div className="inline-flex flex-wrap gap-1.5 rounded-xl border-2 border-admin/30 bg-admin-light/50 p-1.5">
+          <div className="flex w-full gap-1.5 overflow-x-auto rounded-xl border-2 border-admin/30 bg-admin-light/50 p-1.5 sm:w-auto sm:flex-wrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {QUICK_OPTIONS.map((opt) => {
               const r = quickDates(opt.key)
               const active = dateFrom === r.from && dateTo === r.to
@@ -1209,7 +1209,7 @@ export default function ReportsTab() {
                 <button
                   key={opt.key}
                   onClick={() => applyQuickRange(opt.key)}
-                  className={`rounded-lg border-2 px-3.5 py-2 text-xs font-extrabold transition-all duration-200 ${
+                  className={`shrink-0 whitespace-nowrap rounded-lg border-2 px-3.5 py-2 text-xs font-extrabold transition-all duration-200 ${
                     active
                       ? 'border-admin bg-admin text-white shadow-md'
                       : 'border-line bg-white text-ink shadow-sm hover:border-admin hover:bg-admin-light hover:text-admin-dark'
@@ -1353,8 +1353,9 @@ export default function ReportsTab() {
             ))}
           </div>
 
-          {/* ── Tabs: only one section shows at a time ── */}
-          <div className="no-print mb-3 flex flex-wrap gap-2 rounded-2xl border border-line bg-white p-2 shadow-[0_2px_8px_rgba(0,0,0,0.10)]">
+          {/* ── Tabs: only one section shows at a time.
+              On a phone the tabs scroll sideways instead of stacking into 3 messy rows. ── */}
+          <div className="no-print mb-3 flex gap-2 overflow-x-auto rounded-2xl border border-line bg-white p-2 shadow-[0_2px_8px_rgba(0,0,0,0.10)] sm:flex-wrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {[
               { key: 'charts', label: 'Charts & insights', icon: 'chart' },
               { key: 'stock', label: 'Stock status', icon: 'box', badge: needsAttentionCount > 0 ? needsAttentionCount : null, warn: true },
@@ -1371,7 +1372,7 @@ export default function ReportsTab() {
                     setActiveTab(tab.key)
                     if (tab.key === 'beneficiaries') setItemFilter('')
                   }}
-                  className={`flex items-center gap-2 rounded-xl border-2 px-3.5 py-2.5 text-xs font-extrabold transition-all duration-200 ${
+                  className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border-2 px-3.5 py-2.5 text-xs font-extrabold transition-all duration-200 ${
                     active
                       ? 'border-admin bg-admin text-white shadow-md'
                       : 'border-line bg-cream/60 text-ink hover:border-admin hover:bg-admin-light hover:text-admin-dark'
@@ -1555,7 +1556,7 @@ export default function ReportsTab() {
                   </button>
                 )}
               </div>
-              <div className="no-print flex items-center gap-3">
+              <div className="no-print flex flex-wrap items-center gap-2">
                 <button
                   onClick={expandAllBeneficiaries}
                   className="inline-flex items-center rounded-lg border-2 border-line bg-white px-3 py-1.5 text-xs font-bold text-ink shadow-sm transition hover:border-admin hover:bg-admin-light hover:text-admin-dark"
