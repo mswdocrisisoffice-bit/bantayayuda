@@ -109,17 +109,18 @@ export default function PinGate() {
   return (
     <>
       {/* small floating buttons */}
-      <div className="no-print fixed bottom-4 right-4 z-40 flex gap-2">
+      <div className="no-print fixed bottom-3 right-3 z-40 flex gap-2 sm:bottom-4 sm:right-4">
         {hasPin && (
           <button onClick={lockNow} className="rounded-full border-2 border-line bg-white px-3 py-2 text-xs font-bold text-ink shadow-md hover:border-admin">
-            🔒 Lock
+            🔒<span className="hidden sm:inline"> Lock</span>
           </button>
         )}
         <button
           onClick={() => { setPanel(panel ? null : 'set'); setPin(''); setPin2(''); setMsg('') }}
           className="rounded-full border-2 border-line bg-white px-3 py-2 text-xs font-bold text-ink shadow-md hover:border-admin"
         >
-          {hasPin ? 'Change PIN' : 'Set PIN'}
+          <span className="sm:hidden">PIN</span>
+          <span className="hidden sm:inline">{hasPin ? 'Change PIN' : 'Set PIN'}</span>
         </button>
       </div>
 

@@ -1,5 +1,5 @@
 // src/components/OfflineStatus.jsx
-// Floating status pill: Offline / pending count / Syncing.
+// Floating status pill: Offline / pending count / Syncing. Put <OfflineStatus /> once in AdminLayout.
 import { useCallback, useEffect, useState } from 'react'
 import { flushQueue, listQueue, onQueueChanged } from '../lib/offlineQueue.js'
 
@@ -54,7 +54,7 @@ export default function OfflineStatus() {
   } else { tone = 'bg-beneficiary-light text-beneficiary-dark border-beneficiary/40'; text = `✓ ${justSynced} saved entr${justSynced === 1 ? 'y' : 'ies'} uploaded` }
 
   return (
-    <div className={`no-print fixed bottom-4 left-1/2 z-50 flex max-w-[92vw] -translate-x-1/2 items-center gap-3 rounded-full border-2 px-4 py-2 text-xs font-bold shadow-lg ${tone}`}>
+    <div className={`no-print fixed bottom-16 left-1/2 z-50 flex max-w-[94vw] -translate-x-1/2 sm:bottom-4 items-center gap-3 rounded-full border-2 px-4 py-2 text-xs font-bold shadow-lg ${tone}`}>
       <span>{text}</span>
       {online && !syncing && items.length > 0 && (
         <button onClick={sync} className="rounded-full bg-white/80 px-3 py-1 text-[11px] font-bold hover:bg-white">

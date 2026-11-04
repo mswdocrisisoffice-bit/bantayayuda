@@ -22,7 +22,6 @@ const icons = {
   inventory: <><path d="M21 8 12 3 3 8v8l9 5 9-5z" /><path d="M3 8l9 5 9-5" /><path d="M12 13v8" /></>,
   reports: <><path d="M4 20V10" /><path d="M10 20V4" /><path d="M16 20v-7" /><path d="M22 20H2" /></>,
   generator: <><path d="M6 2h9l5 5v15a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" /><path d="M15 2v5h5" /><path d="M8 13h8" /><path d="M8 17h5" /></>,
-  ris: <><rect x="5" y="3" width="14" height="18" rx="2" /><path d="M9 3h6v3H9z" /><path d="M9 11h6M9 15h6" /></>,
   archive: <><rect x="2.5" y="4" width="19" height="4.5" rx="1" /><path d="M4 8.5V19a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V8.5" /><path d="M10 12.5h4" /></>,
   barangay: <><path d="M12 2 3 7v13h18V7z" /><path d="M9 21v-6h6v6" /></>,
   logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" /></>,
@@ -48,7 +47,6 @@ const TABS = [
   { label: 'Reports', to: '/admin/reports', icon: 'reports' },
   { label: 'Report generator', to: '/admin/report-generator', icon: 'generator' },
   { label: 'Archive', to: '/admin/archive', icon: 'archive' },
-  { label: 'RIS', to: '/admin/ris', icon: 'ris' },
 ]
 
 export function AdminTabs({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) {
@@ -64,7 +62,7 @@ export function AdminTabs({ collapsed, setCollapsed, mobileOpen, setMobileOpen }
   const groups = [
     { title: null, items: [TABS[0]] },
     { title: 'Operations', items: [TABS[2], TABS[3]] },
-    { title: 'Data & Reports', items: [TABS[1], TABS[4], TABS[5], TABS[6], TABS[8]] },
+    { title: 'Data & Reports', items: [TABS[1], TABS[4], TABS[5], TABS[6]] },
     { title: null, items: [TABS[7]] },
   ]
 
@@ -413,17 +411,17 @@ export default function AdminDashboard() {
 
   const statCards = [
     {
-      key: 'donations', label: 'Total donations recorded', value: donations.length,
+      key: 'donations', label: 'Total donations recorded', short: 'Donations', value: donations.length,
       sub: `${confirmedCount} confirmed`, icon: 'donations',
       accent: '#A32D2D', tone: 'bg-admin-light text-admin-dark',
     },
     {
-      key: 'beneficiaries', label: 'Registered beneficiary households', value: households.length,
+      key: 'beneficiaries', label: 'Registered beneficiary households', short: 'Households', value: households.length,
       sub: `${aidedHouseholds} given aid`, icon: 'beneficiaries',
       accent: '#4A7A2E', tone: 'bg-donor-light text-donor-dark',
     },
     {
-      key: 'barangays', label: 'Barangays covered', value: `${coveredCount} / 22`,
+      key: 'barangays', label: 'Barangays covered', short: 'Barangays', value: `${coveredCount} / 22`,
       sub: `${coveragePct}% of Manolo Fortich`, icon: 'barangay', progress: coveragePct,
       accent: '#2563A8', tone: 'bg-beneficiary-light text-beneficiary-dark',
     },
@@ -437,21 +435,22 @@ export default function AdminDashboard() {
   return (
     <>
       {/* ── Banner ── */}
-      <div className="relative mb-6 overflow-hidden rounded-card bg-gradient-to-r from-admin-dark to-admin p-6 text-white shadow-[0_4px_14px_rgba(0,0,0,0.2)]">
+      <div className="relative mb-4 overflow-hidden rounded-card bg-gradient-to-r from-admin-dark to-admin p-4 text-white sm:mb-6 sm:p-6 shadow-[0_4px_14px_rgba(0,0,0,0.2)]">
         <div className="pointer-events-none absolute -right-10 -top-12 h-44 w-44 rounded-full bg-white/10" />
         <div className="pointer-events-none absolute -bottom-20 right-28 h-44 w-44 rounded-full bg-white/5" />
-        <div className="relative flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <img src={bantayayudaSeal} alt="" className="h-14 w-14 shrink-0 rounded-full bg-white/90 p-1" />
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-white/70">
-                {greeting} · {dateLabel}
+        <div className="relative flex flex-wrap items-center justify-between gap-3 sm:gap-4">
+          <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+            <img src={bantayayudaSeal} alt="" className="h-11 w-11 shrink-0 rounded-full bg-white/90 p-1 sm:h-14 sm:w-14" />
+            <div className="min-w-0">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-white/70 sm:text-[11px]">
+                {greeting}<span className="hidden sm:inline"> · {dateLabel}</span>
               </div>
-              <h1 className="text-xl font-bold leading-tight">Administrator dashboard</h1>
-              <p className="mt-0.5 text-xs text-white/75">DSWD / LGU staff view · live overview of relief operations</p>
+              <h1 className="text-lg font-bold leading-tight sm:text-xl">Administrator dashboard</h1>
+              <p className="mt-0.5 hidden text-xs text-white/75 sm:block">DSWD / LGU staff view · live overview of relief operations</p>
+              <p className="mt-0.5 text-[11px] text-white/75 sm:hidden">{dateLabel}</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-start">
             <span className="flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[11px] font-semibold">
               <span className="h-2 w-2 animate-pulse rounded-full bg-green-300" />
               Live
@@ -463,7 +462,7 @@ export default function AdminDashboard() {
             </span>
             <button
               onClick={refreshNow}
-              className="rounded-lg bg-white px-3.5 py-1.5 text-xs font-bold text-admin-dark shadow-sm transition hover:bg-white/90"
+              className="rounded-lg bg-white px-4 py-2 text-xs font-bold text-admin-dark shadow-sm transition hover:bg-white/90"
             >
               ↻ Refresh
             </button>
@@ -471,47 +470,52 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ── Stat cards ── */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      {/* ── Stat cards (3 compact tiles in a row on phones) ── */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
         {statCards.map((s) => (
           <button key={s.key} onClick={() => togglePanel(s.key)} className="group text-left">
             <div
-              className={`relative h-full overflow-hidden rounded-card bg-white p-5 pt-6 shadow-[0_2px_8px_rgba(0,0,0,0.1)] transition group-hover:-translate-y-0.5 group-hover:shadow-[0_8px_20px_rgba(0,0,0,0.16)] ${
-                openPanel === s.key ? 'ring-2 ring-admin/50' : ''
+              className={`relative h-full overflow-hidden rounded-card bg-white p-3 pt-4 shadow-[0_2px_8px_rgba(0,0,0,0.1)] transition group-hover:-translate-y-0.5 group-hover:shadow-[0_8px_20px_rgba(0,0,0,0.16)] sm:p-5 sm:pt-6 ${
+                openPanel === s.key ? 'ring-2 ring-admin/60' : ''
               }`}
             >
               <div className="absolute inset-x-0 top-0 h-1.5" style={{ background: s.accent }} />
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="text-xs font-semibold text-faint">{s.label}</div>
-                  <div className="mt-1 text-3xl font-bold leading-none text-ink">{loading ? '…' : s.value}</div>
-                  <div className="mt-2 text-[11px] font-semibold" style={{ color: s.accent }}>
+                  <div className="text-[11px] font-semibold leading-tight text-faint sm:text-xs">
+                    <span className="sm:hidden">{s.short}</span>
+                    <span className="hidden sm:inline">{s.label}</span>
+                  </div>
+                  <div className="mt-1 text-2xl font-bold leading-none text-ink sm:text-3xl">{loading ? '…' : s.value}</div>
+                  <div className="mt-1.5 hidden text-[11px] font-semibold sm:block" style={{ color: s.accent }}>
                     {loading ? '' : s.sub}
                   </div>
                 </div>
-                <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${s.tone}`}>
+                <div className={`hidden h-11 w-11 shrink-0 items-center justify-center rounded-2xl sm:flex ${s.tone}`}>
                   <Icon path={icons[s.icon]} className="h-5 w-5" />
                 </div>
               </div>
 
               {s.progress != null && (
-                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-line-soft">
+                <div className="mt-3 hidden h-1.5 overflow-hidden rounded-full bg-line-soft sm:block">
                   <div className="h-full rounded-full transition-all" style={{ width: `${s.progress}%`, background: s.accent }} />
                 </div>
               )}
 
-              <div className="mt-3 flex items-center justify-between text-[10px] font-bold text-admin-dark">
-                <span>{openPanel === s.key ? 'Hide details' : 'View details'}</span>
+              <div className="mt-2 flex items-center justify-between text-[10px] font-bold text-admin-dark sm:mt-3">
+                <span className="hidden sm:inline">{openPanel === s.key ? 'Hide details' : 'View details'}</span>
+                <span className="sm:hidden" style={{ color: s.accent }}>{loading ? '' : s.sub.replace(' of Manolo Fortich', '').replace(' given aid', ' aided').replace(' confirmed', ' ok')}</span>
                 <span>{openPanel === s.key ? '▲' : '▼'}</span>
               </div>
             </div>
           </button>
         ))}
       </div>
+      <p className="mt-2 text-center text-[11px] text-faint sm:hidden">Tap a card to see the details.</p>
 
       {/* ── All donations: compact boxes with date & time, calendar filter ── */}
       {openPanel === 'donations' && (
-        <Card className="mt-4 p-5">
+        <Card className="mt-4 p-4 sm:p-5">
           <h2 className="mb-3 text-sm font-bold text-ink">All donations</h2>
           {donations.length === 0 && <p className="text-xs text-faint">No donations recorded yet.</p>}
 
@@ -545,7 +549,7 @@ export default function AdminDashboard() {
 
       {/* ── Registered households: registry + families registered through distribution ── */}
       {openPanel === 'beneficiaries' && (
-        <Card className="mt-4 p-5">
+        <Card className="mt-4 p-4 sm:p-5">
           <h2 className="mb-1 text-sm font-bold text-ink">Registered beneficiary households</h2>
           <p className="mb-3 text-[11px] text-faint">
             Includes families registered in the Beneficiary registry and those added through Record distribution.
@@ -587,7 +591,7 @@ export default function AdminDashboard() {
 
       {/* ── Barangay coverage: one card per barangay ── */}
       {openPanel === 'barangays' && (
-        <Card className="mt-4 p-5">
+        <Card className="mt-4 p-4 sm:p-5">
           <h2 className="mb-1 text-sm font-bold text-ink">Barangays with recorded activity</h2>
           <p className="mb-3 text-[11px] text-faint">
             {coveredCount} of 22 official barangays. Different spellings of the same barangay are combined.
@@ -636,14 +640,14 @@ export default function AdminDashboard() {
         </Card>
       )}
 
-      <Card className="mt-4 p-5">
+      <Card className="mt-4 p-4 sm:p-5">
         <div className="mb-3 flex items-center gap-2.5 text-sm font-bold text-ink">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-admin-light text-admin-dark">
             <Icon path={icons.barangay} className="h-4 w-4" />
           </span>
           Barangay aid map — Manolo Fortich, Bukidnon
         </div>
-        <BarangayMap key={mapKey} height="320px" />
+        <BarangayMap key={mapKey} height="280px" />
         <div className="mt-2 flex flex-wrap gap-3 text-[10px] text-faint">
           <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: '#888780' }} /> No activity</span>
           <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: '#639922' }} /> Has donations</span>
