@@ -95,54 +95,54 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-cream">
       {/* Hero */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-[#0f3a6b] via-[#0b2545] to-[#081a31] px-4 pb-24 pt-8 text-white">
+      <div className="relative overflow-hidden bg-gradient-to-br from-[#0f3a6b] via-[#0b2545] to-[#081a31] px-4 pb-20 pt-6 text-white sm:pb-24 sm:pt-8">
         <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-[#1d5fa8]/25" />
         <div className="pointer-events-none absolute -bottom-32 left-1/3 h-80 w-80 rounded-full bg-[#2f855a]/15" />
 
         <div className="relative mx-auto max-w-5xl">
-          <div className="mb-12 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <img src={bantayayudaSeal} alt="BantayAyuda seal" className="h-16 w-16 shrink-0" />
-              <div>
+          <div className="mb-8 flex items-center justify-between gap-3 sm:mb-12">
+            <div className="flex min-w-0 items-center gap-3">
+              <img src={bantayayudaSeal} alt="BantayAyuda seal" className="h-12 w-12 shrink-0 sm:h-16 sm:w-16" />
+              <div className="min-w-0">
                 <div className="text-lg font-bold leading-tight">BantayAyuda</div>
                 <div className="text-[11px] text-white/60">Manolo Fortich, Bukidnon</div>
               </div>
             </div>
             <Link
               to="/admin/login"
-              className="flex items-center gap-1.5 rounded-lg border border-white/20 bg-white/5 px-3.5 py-2 text-xs font-semibold text-white/85 transition-colors hover:border-white/40 hover:bg-white/10 hover:text-white"
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-white/20 bg-white/5 px-3 py-2.5 sm:px-3.5 sm:py-2 text-xs font-semibold text-white/85 transition-colors hover:border-white/40 hover:bg-white/10 hover:text-white"
             >
               <Icon path={icons.shield} className="h-3.5 w-3.5" />
-              Staff access
+              <span className="hidden sm:inline">Staff access</span><span className="sm:hidden">Staff</span>
             </Link>
           </div>
 
           <div className="max-w-2xl">
-            <h1 className="text-4xl font-extrabold leading-tight sm:text-5xl">
+            <h1 className="text-3xl font-extrabold leading-tight sm:text-5xl">
               Relief goods, tracked from donor to doorstep.
             </h1>
-            <p className="mt-4 max-w-xl text-base text-white/75">
+            <p className="mt-3 max-w-xl text-sm text-white/75 sm:mt-4 sm:text-base">
               See where every donation goes. A transparent record of relief across all 22 barangays of Manolo Fortich,
               built for donors, beneficiaries, and DSWD/LGU staff.
             </p>
 
-            <div className="mt-7 flex flex-wrap gap-3">
+            <div className="mt-6 flex flex-col gap-3 sm:mt-7 sm:flex-row sm:flex-wrap">
               <Link
                 to="/donor/login"
-                className="inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-[#0b2545] shadow-lg transition-transform hover:-translate-y-0.5"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3.5 text-sm font-bold text-[#0b2545] shadow-lg transition-transform hover:-translate-y-0.5"
               >
                 I want to donate
                 <Icon path={icons.arrow} className="h-4 w-4" />
               </Link>
               <Link
                 to="/beneficiary/login"
-                className="inline-flex items-center gap-2 rounded-xl border border-white/30 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-white/10"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/30 px-5 py-3.5 text-sm font-bold text-white transition-colors hover:bg-white/10"
               >
                 I'm a beneficiary
               </Link>
             </div>
 
-            <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2">
+            <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 sm:mt-8 sm:gap-x-6">
               {TRUST.map((t) => (
                 <span key={t.label} className="inline-flex items-center gap-2 text-xs font-semibold text-white/75">
                   <Icon path={icons[t.icon]} className="h-4 w-4 text-white/60" />
@@ -157,12 +157,12 @@ export default function LandingPage() {
       {/* Live stats — pulled up over the hero */}
       <div className="relative mx-auto -mt-12 max-w-5xl px-4">
         <div
-          className="grid gap-4"
-          style={{ gridTemplateColumns: `repeat(${statTiles.length}, minmax(0, 1fr))` }}
+          className="grid grid-cols-2 gap-3 sm:gap-4 md:[grid-template-columns:repeat(var(--n),minmax(0,1fr))]"
+          style={{ '--n': statTiles.length }}
         >
           {statTiles.map((s, i) => (
-            <Card key={s.label} className="p-5 text-center shadow-lg" style={{ borderTop: `4px solid ${['#1d5fa8', '#2f855a', '#0e7490'][i % 3]}` }}>
-              <div className="text-3xl font-extrabold text-ink">{s.value}</div>
+            <Card key={s.label} className={`p-4 text-center shadow-lg sm:p-5 ${statTiles.length % 2 === 1 && i === statTiles.length - 1 ? 'col-span-2 md:col-span-1' : ''}`} style={{ borderTop: `4px solid ${['#1d5fa8', '#2f855a', '#0e7490'][i % 3]}` }}>
+              <div className="text-2xl font-extrabold text-ink sm:text-3xl">{s.value}</div>
               <div className="mt-1 text-xs font-semibold text-faint">{s.label}</div>
             </Card>
           ))}
@@ -170,13 +170,13 @@ export default function LandingPage() {
       </div>
 
       {/* How it works */}
-      <div className="mx-auto max-w-5xl px-4 pt-14">
+      <div className="mx-auto max-w-5xl px-4 pt-10 sm:pt-14">
         <h2 className="mb-1 text-xl font-bold text-ink">How a donation reaches a family</h2>
         <p className="mb-5 text-sm text-faint">Four steps, each one recorded and visible.</p>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
           {STEPS.map((s, i) => (
-            <Card key={s.title} className="relative p-5">
+            <Card key={s.title} className="relative p-4 sm:p-5">
               <span className="absolute right-4 top-3 text-3xl font-extrabold text-black/5">{i + 1}</span>
               <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-beneficiary-light text-beneficiary-dark">
                 <Icon path={icons[s.icon]} className="h-5 w-5" />
@@ -189,13 +189,13 @@ export default function LandingPage() {
       </div>
 
       {/* Recent donations feed + community map */}
-      <div className="mx-auto max-w-5xl px-4 py-14">
+      <div className="mx-auto max-w-5xl px-4 py-10 sm:py-14">
         <h2 className="mb-1 text-xl font-bold text-ink">Happening now</h2>
         <p className="mb-5 text-sm text-faint">Public donations and where aid has reached so far.</p>
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
           <Card className="overflow-hidden p-0 lg:col-span-3">
-            <div className="flex items-center justify-between border-b border-line-soft bg-line-soft/40 px-6 py-4">
+            <div className="flex items-center justify-between border-b border-line-soft bg-line-soft/40 px-4 py-3 sm:px-6 sm:py-4">
               <div className="flex items-center gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-donor-light text-donor-dark">
                   <Icon path={icons.clock} className="h-4 w-4" />
@@ -207,7 +207,7 @@ export default function LandingPage() {
               )}
             </div>
 
-            <div className="p-4">
+            <div className="p-3 sm:p-4">
               {loading && <p className="p-4 text-xs text-faint">Loading…</p>}
               {!loading && feed.length === 0 && (
                 <div className="rounded-lg border border-dashed border-line-soft py-10 text-center">
@@ -220,14 +220,14 @@ export default function LandingPage() {
                 {feed.map((entry) => (
                   <div
                     key={entry.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line-soft px-4 py-3 transition-colors hover:bg-line-soft/30"
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line-soft px-3 py-3 sm:px-4 transition-colors hover:bg-line-soft/30"
                   >
-                    <div className="flex items-start gap-3">
+                    <div className="flex min-w-0 items-start gap-3">
                       <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-beneficiary-light text-beneficiary-dark">
                         <Icon path={icons[CATEGORY_ICONS[entry.category] || 'gift']} className="h-4 w-4" />
                       </span>
-                      <div>
-                        <div className="text-sm font-semibold text-ink">
+                      <div className="min-w-0">
+                        <div className="break-words text-sm font-semibold text-ink">
                           {entry.item} {entry.quantity ? `— ${entry.quantity} ${entry.unit || ''}` : ''}
                         </div>
                         <div className="text-xs text-faint">
@@ -244,7 +244,7 @@ export default function LandingPage() {
           </Card>
 
           <Card className="overflow-hidden p-0 lg:col-span-2">
-            <div className="border-b border-line-soft bg-line-soft/40 px-6 py-4">
+            <div className="border-b border-line-soft bg-line-soft/40 px-4 py-3 sm:px-6 sm:py-4">
               <div className="flex items-center gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-donor-light text-donor-dark">
                   <Icon path={icons.pin} className="h-4 w-4" />
@@ -253,8 +253,8 @@ export default function LandingPage() {
               </div>
               <p className="mt-1 pl-10 text-xs text-faint">Manolo Fortich, Bukidnon — 22 barangays.</p>
             </div>
-            <div className="p-4">
-              <BarangayMap height="320px" />
+            <div className="p-3 sm:p-4">
+              <BarangayMap height="300px" />
             </div>
           </Card>
         </div>
@@ -262,7 +262,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="bg-navy text-white/70">
-        <div className="mx-auto max-w-5xl px-4 py-10">
+        <div className="mx-auto max-w-5xl px-4 py-8 sm:py-10">
           <div className="grid grid-cols-1 gap-8 sm:grid-cols-3">
             <div>
               <div className="flex items-center gap-2">

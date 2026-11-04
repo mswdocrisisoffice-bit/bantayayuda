@@ -44,7 +44,7 @@ export default function AdminLayout() {
         />
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex items-center gap-3 border-b border-line bg-white px-4 py-3 lg:hidden">
+          <div className="sticky top-0 z-30 flex items-center gap-3 border-b border-line bg-white px-4 py-3 lg:hidden">
             <button onClick={() => setMobileOpen(true)} className="text-ink">
               <Icon
                 path={<><path d="M3 6h18" /><path d="M3 12h18" /><path d="M3 18h18" /></>}
@@ -54,7 +54,7 @@ export default function AdminLayout() {
             <span className="text-sm font-bold text-admin-dark">BantayAyuda Admin</span>
           </div>
 
-          <div className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
+          <div className="mx-auto w-full max-w-5xl flex-1 px-3 pb-28 pt-4 sm:px-4 sm:py-8">
             <Outlet />
           </div>
         </div>

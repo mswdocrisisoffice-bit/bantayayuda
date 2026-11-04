@@ -4,6 +4,7 @@ import dswdLogo from '../../assets/dswd-logo.png'
 import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
 import ESignatureCanvas from '../../components/ESignatureCanvas.jsx'
+import { BARANGAY_POSITIONS } from '../../components/ui/BarangayMap.jsx'
 import { supabase } from '../../lib/supabase.js'
 import { submitDistribution, cachedFetch } from '../../lib/offlineQueue.js'
 
@@ -17,11 +18,12 @@ function SectionHeader({ children }) {
   )
 }
 
-function Field({ number, label, children }) {
+function Field({ number, label, required, children }) {
   return (
     <div>
       <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-admin-dark">
         {number ? `${number}. ` : ''}{label}
+        {required && <span className="ml-0.5 text-red-600">*</span>}
       </label>
       {children}
     </div>
@@ -36,6 +38,56 @@ function generateSerialNumber() {
   const year = new Date().getFullYear()
   const rand = String(Date.now()).slice(-6)
   return `MF-${year}-${rand}`
+}
+
+/* ── Barangay field with suggestions from the 22 official barangays.
+   Typing filters the list; tapping a suggestion fills it in. Free text is still
+   allowed (someone may live elsewhere), but a warning shows if it isn't on the list. ── */
+const OFFICIAL_BARANGAYS = BARANGAY_POSITIONS.map((b) => b.name)
+
+function BarangayInput({ value, onChange }) {
+  const [open, setOpen] = useState(false)
+  const q = value.trim().toLowerCase()
+  const exact = OFFICIAL_BARANGAYS.find((b) => b.toLowerCase() === q)
+  const matches = OFFICIAL_BARANGAYS.filter((b) => !q || b.toLowerCase().includes(q))
+
+  return (
+    <div className="relative">
+      <input
+        className={inputClass}
+        value={value}
+        placeholder="Type or pick a barangay"
+        autoComplete="off"
+        onFocus={() => setOpen(true)}
+        onChange={(e) => { onChange(e.target.value); setOpen(true) }}
+        onBlur={() => {
+          setTimeout(() => setOpen(false), 150)
+          if (exact && exact !== value) onChange(exact) // fix the capitalization automatically
+        }}
+      />
+      {open && matches.length > 0 && !(exact && matches.length === 1) && (
+        <ul className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-line bg-white py-1 shadow-lg">
+          {matches.map((b) => (
+            <li key={b}>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { onChange(b); setOpen(false) }}
+                className="block w-full px-3 py-1.5 text-left text-sm normal-case text-ink hover:bg-admin-light"
+              >
+                {b}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {value.trim() && !exact && (
+        <p className="mt-1 text-[11px] font-semibold normal-case text-warn-text">
+          ⚠ Wala sa listahan sa 22 ka barangay. Pili sa suggestions para parehas ang spelling sa mga report.
+        </p>
+      )}
+    </div>
+  )
 }
 
 /* ── Account creation helpers ── */
@@ -642,8 +694,9 @@ function NewFamilyForm({ prefillSerial }) {
     loadInventory()
   }, [])
 
+  // Region / province / municipality are prefilled for Manolo Fortich so staff don't retype them (still editable)
   const [form, setForm] = useState({
-    region: '', province: '', district: '', cityMunicipality: '', barangay: '', evacuationCenter: '',
+    region: 'Region X (Northern Mindanao)', province: 'Bukidnon', district: '', cityMunicipality: 'Manolo Fortich', barangay: '', evacuationCenter: '',
     lastName: '', firstName: '', middleName: '', nameExt: '',
     birthdate: '', age: '', birthplace: '', sex: '', civilStatus: '', mothersMaidenName: '',
     religion: '', occupation: '', monthlyIncome: '', idCardPresented: '', idCardNumber: '',
@@ -670,6 +723,17 @@ function NewFamilyForm({ prefillSerial }) {
   const selectedInventoryItem = inventory.find((i) => i.item === form.item)
   const overStock = selectedInventoryItem && Number(form.quantity) > selectedInventoryItem.quantity_on_hand
 
+  // Only the name and the place they live are needed about the family, plus what was given and the signature.
+  const missing = [
+    !form.lastName.trim() && 'last name',
+    !form.firstName.trim() && 'first name',
+    !form.barangay.trim() && 'barangay',
+    !selectedInventoryItem && 'item',
+    !form.quantity && 'quantity',
+    !signature && 'signature',
+  ].filter(Boolean)
+  const canSubmit = missing.length === 0 && !overStock && status !== 'saving'
+
   // Keep the suggested username in sync with the name fields, unless staff already edited it
   useEffect(() => {
     if (accountUsernameTouched) return
@@ -694,7 +758,7 @@ function NewFamilyForm({ prefillSerial }) {
   }
 
   async function handleSubmit() {
-    if (!signature || !selectedInventoryItem || overStock) return
+    if (!canSubmit) return
     setStatus('saving')
 
     const finalSerial = serialNumber.trim() || generateSerialNumber()
@@ -710,7 +774,7 @@ function NewFamilyForm({ prefillSerial }) {
       item: selectedInventoryItem.item,
       quantity: Number(form.quantity),
       unit: form.unit,
-      barangay: form.barangay,
+      barangay: form.barangay.trim(),
       signature_path: fileName,
       thumbmark_data: fileName,
       status: 'confirmed',
@@ -768,7 +832,7 @@ function NewFamilyForm({ prefillSerial }) {
             lastName: form.lastName,
             firstName: form.firstName,
             middleName: form.middleName,
-            barangay: form.barangay,
+            barangay: form.barangay.trim(),
             contactNumber: form.contactPrimary,
             householdSize: familyMembers.length,
           }
@@ -799,6 +863,12 @@ function NewFamilyForm({ prefillSerial }) {
   return (
     <div className="overflow-hidden rounded-lg border-2 border-navy bg-white">
 
+     <div className="border-b border-line bg-admin-light px-6 py-3 text-xs text-admin-dark">
+  <span className="font-bold">Required:</span> the <b>name</b> (last + first name) and the <b>barangay</b> where
+  the family lives, plus the item, quantity, and signature for what was given. Everything else is <b>optional</b> and
+  can be filled in later. <span className="text-red-600">*</span> = required.
+</div>
+
       <Card className="rounded-none border-0 border-b border-line p-6 shadow-none">
         <SectionHeader>Location of the affected family</SectionHeader>
         <div className="grid grid-cols-1 gap-3 border border-line-soft p-3 sm:grid-cols-3">
@@ -806,7 +876,9 @@ function NewFamilyForm({ prefillSerial }) {
           <Field number={2} label="Province"><input className={inputClass} value={form.province} onChange={(e) => update('province', e.target.value)} /></Field>
           <Field number={3} label="District"><input className={inputClass} value={form.district} onChange={(e) => update('district', e.target.value)} /></Field>
           <Field number={4} label="City/Municipality"><input className={inputClass} value={form.cityMunicipality} onChange={(e) => update('cityMunicipality', e.target.value)} /></Field>
-          <Field number={5} label="Barangay"><input className={inputClass} value={form.barangay} onChange={(e) => update('barangay', e.target.value)} /></Field>
+          <Field number={5} label="Barangay" required>
+            <BarangayInput value={form.barangay} onChange={(v) => update('barangay', v)} />
+          </Field>
           <Field number={6} label="Evacuation center / site"><input className={inputClass} value={form.evacuationCenter} onChange={(e) => update('evacuationCenter', e.target.value)} /></Field>
         </div>
       </Card>
@@ -814,8 +886,8 @@ function NewFamilyForm({ prefillSerial }) {
       <Card className="rounded-none border-0 border-b border-line p-6 shadow-none">
         <SectionHeader>Head of the family</SectionHeader>
         <div className="grid grid-cols-1 gap-3 border border-line-soft p-3 sm:grid-cols-3">
-          <Field number={7} label="Last name"><input className={inputClass} value={form.lastName} onChange={(e) => update('lastName', e.target.value)} /></Field>
-          <Field number={8} label="First name"><input className={inputClass} value={form.firstName} onChange={(e) => update('firstName', e.target.value)} /></Field>
+          <Field number={7} label="Last name" required><input className={inputClass} value={form.lastName} onChange={(e) => update('lastName', e.target.value)} /></Field>
+          <Field number={8} label="First name" required><input className={inputClass} value={form.firstName} onChange={(e) => update('firstName', e.target.value)} /></Field>
           <Field number={9} label="Middle name"><input className={inputClass} value={form.middleName} onChange={(e) => update('middleName', e.target.value)} /></Field>
           <Field number={10} label="Name ext. (Jr., Sr., I)"><input className={inputClass} value={form.nameExt} onChange={(e) => update('nameExt', e.target.value)} /></Field>
           <Field number={11} label="Birthdate"><input type="date" className={inputClass} value={form.birthdate} onChange={(e) => update('birthdate', e.target.value)} /></Field>
@@ -947,7 +1019,7 @@ function NewFamilyForm({ prefillSerial }) {
       <Card className="rounded-none border-0 border-b border-line p-6 shadow-none">
         <SectionHeader>Relief goods distributed</SectionHeader>
         <div className="grid grid-cols-1 gap-3 border border-line-soft p-3 sm:grid-cols-2">
-          <Field label="Item (from stock)">
+          <Field label="Item (from stock)" required>
             <select
               className={inputClass}
               value={form.item}
@@ -972,7 +1044,7 @@ function NewFamilyForm({ prefillSerial }) {
               ))}
             </select>
           </Field>
-          <Field label={selectedInventoryItem ? `Quantity to give (max ${selectedInventoryItem.quantity_on_hand} ${selectedInventoryItem.unit})` : 'Quantity'}>
+          <Field label={selectedInventoryItem ? `Quantity to give (max ${selectedInventoryItem.quantity_on_hand} ${selectedInventoryItem.unit})` : 'Quantity'} required>
             <input
               type="number"
               min="0"
@@ -1026,20 +1098,19 @@ function NewFamilyForm({ prefillSerial }) {
       </Card>
 
       <Card className="rounded-none border-0 p-6 shadow-none">
-        <SectionHeader>Signature/Thumbmark of family head</SectionHeader>
+        <SectionHeader>Signature/Thumbmark of family head <span className="text-red-300">*</span></SectionHeader>
         <div className="mb-4 border border-line-soft p-4">
           <div className="mb-2 text-xs font-bold text-ink">Hand device to recipient to confirm receipt</div>
           <ESignatureCanvas onSave={setSignature} />
           {signature && <p className="mt-2 text-xs font-semibold text-donor-dark">Thumbmark captured ✓</p>}
         </div>
 
-        <Button
-          variant="admin"
-          disabled={!signature || !form.lastName || !form.firstName || !selectedInventoryItem || !form.quantity || overStock}
-          onClick={handleSubmit}
-        >
-          Confirm distribution
+        <Button variant="admin" disabled={!canSubmit} onClick={handleSubmit}>
+          {status === 'saving' ? 'Saving…' : 'Confirm distribution'}
         </Button>
+        {missing.length > 0 && status !== 'success' && (
+          <p className="mt-2 text-[11px] text-faint">Kulang pa: {missing.join(', ')}.</p>
+        )}
 
         {status === 'success' && (
           <div className="mt-3 rounded border border-beneficiary-dark bg-beneficiary-light p-3">

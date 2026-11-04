@@ -22,6 +22,7 @@ const icons = {
   map: <><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z" /><path d="M9 4v14M15 6v14" /></>,
   search: <><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></>,
   user: <><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" /></>,
+  card: <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></>,
   heart: <path d="M12 21s-7-4.6-9.3-9A5.2 5.2 0 0 1 12 6.5 5.2 5.2 0 0 1 21.3 12C19 16.4 12 21 12 21z" />,
 }
 
@@ -83,6 +84,20 @@ function DistPill({ info }) {
     >
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: st.color }} />
       {st.label}
+    </span>
+  )
+}
+
+/* 📱 GCash / 💵 Cash chip for cash donations (nothing for donations with no payment method) */
+function PayChip({ d }) {
+  if (!d.payment_method) return null
+  const online = d.payment_method !== 'cash'
+  return (
+    <span
+      className="inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide"
+      style={online ? { background: '#E6F1FF', color: '#0B5FC4' } : { background: '#EEF1F4', color: '#334155' }}
+    >
+      {online ? `📱 ${d.payment_method}` : '💵 Cash'}
     </span>
   )
 }
@@ -215,12 +230,12 @@ export default function DonorDashboard() {
   return (
     <div className="min-h-screen bg-cream pb-12">
       {/* Hero */}
-      <header className="relative overflow-hidden bg-gradient-to-br from-[#0f3a6b] via-[#0b2545] to-[#081a31] px-4 pb-16 pt-8 text-white">
+      <header className="relative overflow-hidden bg-gradient-to-br from-[#0f3a6b] via-[#0b2545] to-[#081a31] px-4 pb-16 pt-6 text-white sm:pt-8">
         <div className="pointer-events-none absolute -right-20 -top-24 h-80 w-80 rounded-full bg-[#1d5fa8]/25" />
         <div className="pointer-events-none absolute -bottom-28 left-1/4 h-72 w-72 rounded-full bg-[#4d7c0f]/20" />
 
         <div className="relative mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-4">
+          <div className="flex min-w-0 items-center gap-3 sm:gap-4">
             <Avatar name={displayName} size="lg" />
             <div className="min-w-0">
               <p className="text-xs font-semibold text-white/70">{greeting}</p>
@@ -244,9 +259,9 @@ export default function DonorDashboard() {
 
       <div className="relative z-10 mx-auto -mt-9 max-w-5xl px-4">
         {/* Stat cards */}
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
           {statCards.map((s) => (
-            <Card key={s.label} className="p-5 shadow-lg" style={{ borderTop: `4px solid ${s.accent}` }}>
+            <Card key={s.label} className="p-4 shadow-lg sm:p-5" style={{ borderTop: `4px solid ${s.accent}` }}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="text-xs text-faint">{s.label}</div>
@@ -266,14 +281,14 @@ export default function DonorDashboard() {
         </div>
 
         {/* Tabs */}
-        <div className="mt-6 flex gap-2 rounded-2xl bg-white p-2 shadow-sm">
+        <div className="mt-6 flex gap-2 overflow-x-auto rounded-2xl bg-white p-2 shadow-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {TABS.map((t) => {
             const active = tab === t.key
             return (
               <button
                 key={t.key}
                 onClick={() => setTab(t.key)}
-                className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+                className={`flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
                   active ? 'text-white shadow' : 'text-muted hover:bg-black/5'
                 }`}
                 style={active ? { background: GREEN } : undefined}
@@ -304,7 +319,7 @@ export default function DonorDashboard() {
               <>
                 {/* Recent donations */}
                 <Card className="overflow-hidden p-0">
-                  <div className="flex items-center justify-between border-b border-line-soft bg-line-soft/40 px-6 py-4">
+                  <div className="flex items-center justify-between border-b border-line-soft bg-line-soft/40 px-4 py-3 sm:px-6 sm:py-4">
                     <h2 className="text-sm font-bold text-ink">Your recent donations</h2>
                     {donations.length > 5 && (
                       <button
@@ -316,7 +331,7 @@ export default function DonorDashboard() {
                       </button>
                     )}
                   </div>
-                  <div className="space-y-2 p-4">
+                  <div className="space-y-2 p-3 sm:p-4">
                     {donations.slice(0, 5).map((d) => {
                       const c = categoryColor(d.category)
                       return (
@@ -343,6 +358,7 @@ export default function DonorDashboard() {
                             </div>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
+                            <PayChip d={d} />
                             <DistPill info={distInfo(d)} />
                             <span
                               className="rounded-lg px-3 py-1.5 text-xs font-bold"
@@ -359,7 +375,7 @@ export default function DonorDashboard() {
 
                 <div className="grid gap-5 lg:grid-cols-2">
                   {/* Where it went */}
-                  <Card className="p-6">
+                  <Card className="p-4 sm:p-6">
                     <h2 className="text-sm font-bold text-ink">Where your donations went</h2>
                     <p className="mb-4 text-xs text-faint">
                       {stats.barangayCount} barangay{stats.barangayCount === 1 ? '' : 's'} reached so far
@@ -394,7 +410,7 @@ export default function DonorDashboard() {
                   </Card>
 
                   {/* What you gave */}
-                  <Card className="p-6">
+                  <Card className="p-4 sm:p-6">
                     <h2 className="text-sm font-bold text-ink">What you gave</h2>
                     <p className="mb-4 text-xs text-faint">Your donations by category</p>
                     <div className="space-y-3">
@@ -432,12 +448,12 @@ export default function DonorDashboard() {
         {/* ───────── Map ───────── */}
         {tab === 'map' && (
           <Card className="mt-5 overflow-hidden p-0">
-            <div className="border-b border-line-soft bg-line-soft/40 px-6 py-4">
+            <div className="border-b border-line-soft bg-line-soft/40 px-4 py-3 sm:px-6 sm:py-4">
               <h2 className="text-sm font-bold text-ink">Coverage map</h2>
               <p className="text-xs text-faint">Manolo Fortich, Bukidnon — 22 barangays</p>
             </div>
             <div className="p-4">
-              <BarangayMap height="420px" />
+              <BarangayMap height="340px" />
             </div>
           </Card>
         )}
@@ -494,7 +510,7 @@ export default function DonorDashboard() {
               {filteredHistory.map((d) => {
                 const c = categoryColor(d.category)
                 return (
-                  <Card key={d.id} className="p-5" style={{ borderTop: `4px solid ${c.accent}` }}>
+                  <Card key={d.id} className="p-4 sm:p-5" style={{ borderTop: `4px solid ${c.accent}` }}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-3">
                         <span
@@ -531,6 +547,15 @@ export default function DonorDashboard() {
                         Donated as {d.donor_name || displayName}
                         {d.recorded_by ? <span className="text-faint"> · recorded by {d.recorded_by}</span> : null}
                       </div>
+                      {d.payment_method && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Icon path={icons.card} className="h-3.5 w-3.5 text-faint" />
+                          {d.payment_method === 'cash' ? 'Cash handed over' : `Sent online via ${d.payment_method}`}
+                          {d.payment_reference && (
+                            <span className="font-mono text-faint"> · Ref {d.payment_reference}</span>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {(() => {
