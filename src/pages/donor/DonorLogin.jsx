@@ -74,8 +74,8 @@ export default function DonorLogin() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-cream px-4 py-10">
-      <Card className="w-full max-w-sm border-2 border-donor-border p-8">
+    <div className="flex min-h-screen items-start justify-center overflow-y-auto bg-cream px-4 py-8 sm:items-center sm:py-10">
+      <Card className="w-full max-w-sm border-2 border-donor-border p-6 sm:p-8">
         <div className="mb-1 text-lg font-bold text-navy">{isRegister ? 'Register as donor' : 'Donor login'}</div>
         <p className="mb-6 text-sm text-faint">{isRegister ? 'Create your donor account' : 'Log in to track your donations'}</p>
         <form onSubmit={handleSubmit} className="space-y-3">

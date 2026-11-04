@@ -97,7 +97,7 @@ export default function StockDetailsModal({ category, item, unit, inventoryId, o
       >
         {/* Header */}
         <div
-          className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-line-soft bg-white px-6 py-4"
+          className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-line-soft bg-white px-4 py-4 sm:px-6"
           style={{ borderTop: `5px solid ${color.accent}` }}
         >
           <div className="min-w-0">
@@ -122,7 +122,7 @@ export default function StockDetailsModal({ category, item, unit, inventoryId, o
         </div>
 
         {/* Body */}
-        <div className="space-y-3 p-6">
+        <div className="space-y-3 p-4 sm:p-6">
           {loading && <p className="text-sm text-faint">Loading…</p>}
           {!loading && rows.length === 0 && (
             <p className="rounded-lg border border-dashed border-line-soft p-6 text-center text-sm text-faint">

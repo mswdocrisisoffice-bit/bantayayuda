@@ -42,8 +42,8 @@ export default function AdminLogin() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-cream px-4">
-      <Card className="w-full max-w-sm border-2 border-admin-border p-8">
+    <div className="flex min-h-screen items-start justify-center overflow-y-auto bg-cream px-4 py-8 sm:items-center sm:py-4">
+      <Card className="w-full max-w-sm border-2 border-admin-border p-6 sm:p-8">
         <div className="mb-1 text-lg font-bold text-admin-dark">Administrator login</div>
         <p className="mb-6 text-xs text-faint">DSWD / LGU staff access only</p>
 

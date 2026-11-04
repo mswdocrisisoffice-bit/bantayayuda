@@ -109,7 +109,7 @@ export default function PinGate() {
   return (
     <>
       {/* small floating buttons */}
-      <div className="no-print fixed bottom-3 right-3 z-40 flex gap-2 sm:bottom-4 sm:right-4">
+      <div className="no-print fixed bottom-20 right-3 z-40 flex gap-2 sm:bottom-4 sm:right-4">
         {hasPin && (
           <button onClick={lockNow} className="rounded-full border-2 border-line bg-white px-3 py-2 text-xs font-bold text-ink shadow-md hover:border-admin">
             🔒<span className="hidden sm:inline"> Lock</span>

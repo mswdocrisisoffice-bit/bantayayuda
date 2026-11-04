@@ -221,7 +221,7 @@ export function PaymentAccountsManager({ onChanged, embedded = false }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-3 px-6 py-4 text-left transition hover:bg-line-soft/40"
+        className="flex w-full items-center gap-3 px-4 py-4 text-left transition hover:bg-line-soft/40 sm:px-6"
       >
         <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-admin-light text-lg">📱</span>
         <div className="flex-1">
@@ -235,7 +235,7 @@ export function PaymentAccountsManager({ onChanged, embedded = false }) {
       </button>
 
       {open && (
-        <div className="tab-fade border-t border-line-soft p-6">
+        <div className="tab-fade border-t border-line-soft p-4 sm:p-6">
           {loading && <p className="text-xs text-faint">Loading…</p>}
 
           <div className="space-y-2">

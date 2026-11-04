@@ -4,10 +4,31 @@
 
 html {
   overflow-y: scroll;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   @apply bg-cream text-ink;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Never let a wide image or canvas push the whole page sideways on a phone. */
+img,
+video,
+canvas {
+  max-width: 100%;
+}
+
+/* iOS Safari zooms the page when a form control under 16px gets focus.
+   Keeping 16px on small screens stops the layout from jumping while typing. */
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 640px) {
+    input:not([type='checkbox']):not([type='radio']),
+    select,
+    textarea {
+      font-size: 16px;
+    }
+  }
 }
 
 @layer components {

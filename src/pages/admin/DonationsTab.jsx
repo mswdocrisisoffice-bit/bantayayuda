@@ -742,7 +742,7 @@ export function DonationBox({ d, isOpen, onToggle, actions }) {
 function SectionCard({ step, title, hint, children }) {
   return (
     <section className="border-b border-line-soft">
-      <div className="flex items-center gap-3 bg-gradient-to-r from-admin-light/60 to-white px-6 py-3.5">
+      <div className="flex items-center gap-3 bg-gradient-to-r from-admin-light/60 to-white px-4 py-3.5 sm:px-6">
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-admin text-xs font-bold text-white shadow">
           {step}
         </span>
@@ -751,7 +751,7 @@ function SectionCard({ step, title, hint, children }) {
           {hint && <p className="text-[11px] text-faint">{hint}</p>}
         </div>
       </div>
-      <div className="grid grid-cols-1 gap-4 px-6 py-5 sm:grid-cols-2">{children}</div>
+      <div className="grid grid-cols-1 gap-4 px-4 py-5 sm:grid-cols-2 sm:px-6">{children}</div>
     </section>
   )
 }
@@ -993,7 +993,7 @@ export default function DonationsTab() {
   return (
     <>
       {/* ── Header ── */}
-      <div className="mb-4 flex items-center gap-4 rounded-card bg-white/90 px-5 py-4 shadow-[0_2px_6px_rgba(0,0,0,0.08)]">
+      <div className="mb-4 flex items-center gap-4 rounded-card bg-white/90 px-4 py-4 shadow-[0_2px_6px_rgba(0,0,0,0.08)] sm:px-5">
         <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-admin to-admin-dark text-white shadow-md">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
             <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z" />
@@ -1247,7 +1247,7 @@ export default function DonationsTab() {
         </SectionCard>
 
         {/* ── Submit ── */}
-        <div className="flex flex-wrap items-center gap-4 bg-line-soft/30 px-6 py-5">
+        <div className="flex flex-wrap items-center gap-4 bg-line-soft/30 px-4 py-5 sm:px-6">
           <Button type="submit" variant="admin">
             {status === 'saving' ? 'Saving…' : 'Record donation'}
           </Button>

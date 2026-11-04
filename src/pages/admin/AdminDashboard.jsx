@@ -14,7 +14,7 @@ function Icon({ path, className = 'h-4 w-4' }) {
     </svg>
   )
 }
-const icons = {
+export const icons = {
   overview: <><rect x="3" y="3" width="7" height="9" rx="1.5" /><rect x="14" y="3" width="7" height="5" rx="1.5" /><rect x="14" y="12" width="7" height="9" rx="1.5" /><rect x="3" y="16" width="7" height="5" rx="1.5" /></>,
   donations: <><path d="M20 12v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-8" /><path d="M2 7h20v5H2z" /><path d="M12 22V7" /><path d="M12 7c-1.5 0-4-1-4-3.2A2.3 2.3 0 0 1 10.3 2 3 3 0 0 1 12 3" /><path d="M12 7c1.5 0 4-1 4-3.2A2.3 2.3 0 0 0 13.7 2 3 3 0 0 0 12 3" /></>,
   beneficiaries: <><circle cx="9" cy="8" r="3.2" /><path d="M2.5 20c0-3.6 2.9-6.3 6.5-6.3S15.5 16.4 15.5 20" /><circle cx="17.5" cy="8.5" r="2.6" /><path d="M15.9 13.8c2.8.4 4.6 2.6 4.6 6.2" /></>,
@@ -23,6 +23,7 @@ const icons = {
   reports: <><path d="M4 20V10" /><path d="M10 20V4" /><path d="M16 20v-7" /><path d="M22 20H2" /></>,
   generator: <><path d="M6 2h9l5 5v15a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" /><path d="M15 2v5h5" /><path d="M8 13h8" /><path d="M8 17h5" /></>,
   archive: <><rect x="2.5" y="4" width="19" height="4.5" rx="1" /><path d="M4 8.5V19a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V8.5" /><path d="M10 12.5h4" /></>,
+  doc: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M9 13h6" /><path d="M9 17h6" /></>,
   barangay: <><path d="M12 2 3 7v13h18V7z" /><path d="M9 21v-6h6v6" /></>,
   logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" /></>,
   chevronLeft: <path d="m15 6-6 6 6 6" />,
@@ -30,7 +31,7 @@ const icons = {
   chevronDown: <path d="m6 9 6 6 6-6" />,
 }
 
-const TABS = [
+export const TABS = [
   { label: 'Overview', to: '/admin/dashboard', icon: 'overview' },
   { label: 'Donations', to: '/admin/donations', icon: 'donations' },
   { label: 'Beneficiary registry', to: '/admin/beneficiaries', icon: 'beneficiaries' },
@@ -46,6 +47,7 @@ const TABS = [
   { label: 'Inventory', to: '/admin/inventory', icon: 'inventory' },
   { label: 'Reports', to: '/admin/reports', icon: 'reports' },
   { label: 'Report generator', to: '/admin/report-generator', icon: 'generator' },
+  { label: 'Requisition (RIS)', to: '/admin/ris', icon: 'doc' },
   { label: 'Archive', to: '/admin/archive', icon: 'archive' },
 ]
 
@@ -53,6 +55,8 @@ export function AdminTabs({ collapsed, setCollapsed, mobileOpen, setMobileOpen }
   const { pathname, search } = useLocation()
   const navigate = useNavigate()
   const [openMenu, setOpenMenu] = useState(null)
+  /* On a phone the drawer always shows full labels, even if it was collapsed on desktop. */
+  const showLabels = !collapsed || mobileOpen
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -61,9 +65,8 @@ export function AdminTabs({ collapsed, setCollapsed, mobileOpen, setMobileOpen }
 
   const groups = [
     { title: null, items: [TABS[0]] },
-    { title: 'Operations', items: [TABS[2], TABS[3]] },
-    { title: 'Data & Reports', items: [TABS[1], TABS[4], TABS[5], TABS[6]] },
-    { title: null, items: [TABS[7]] },
+    { title: 'Operations', items: [TABS[2], TABS[3], TABS[4], TABS[7]] },
+    { title: 'Data & Reports', items: [TABS[1], TABS[5], TABS[6], TABS[8]] },
   ]
 
   return (
@@ -76,7 +79,7 @@ export function AdminTabs({ collapsed, setCollapsed, mobileOpen, setMobileOpen }
       )}
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-navy text-white transition-all duration-200 lg:sticky lg:top-0 lg:h-screen
-          ${collapsed ? 'w-[72px]' : 'w-64'}
+          w-64 ${collapsed ? 'lg:w-[72px]' : 'lg:w-64'}
           ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
       >
         <Link
@@ -85,7 +88,7 @@ export function AdminTabs({ collapsed, setCollapsed, mobileOpen, setMobileOpen }
           onClick={() => setMobileOpen(false)}
         >
           <img src={bantayayudaSeal} alt="BantayAyuda seal" className="h-10 w-10 shrink-0" />
-          {!collapsed && (
+          {showLabels && (
             <div className="min-w-0">
               <div className="truncate text-base font-bold leading-tight tracking-tight">BantayAyuda</div>
               <div className="truncate text-[10px] text-white/60">Manolo Fortich</div>
@@ -96,7 +99,7 @@ export function AdminTabs({ collapsed, setCollapsed, mobileOpen, setMobileOpen }
         <nav className="flex-1 space-y-4 overflow-y-auto px-2.5 py-4">
           {groups.map((g, i) => (
             <div key={i}>
-              {g.title && !collapsed && (
+              {g.title && showLabels && (
                 <div className="mb-1.5 px-2.5 text-[10px] font-bold uppercase tracking-wider text-white/35">
                   {g.title}
                 </div>
@@ -106,7 +109,7 @@ export function AdminTabs({ collapsed, setCollapsed, mobileOpen, setMobileOpen }
                   const active = pathname === t.to
                   const hasChildren = !!t.children
 
-                  if (hasChildren && !collapsed) {
+                  if (hasChildren && showLabels) {
                     const isOpen = openMenu === t.to || active
                     return (
                       <div key={t.to}>
@@ -151,13 +154,13 @@ export function AdminTabs({ collapsed, setCollapsed, mobileOpen, setMobileOpen }
                       key={t.to}
                       to={t.to}
                       onClick={() => setMobileOpen(false)}
-                      title={collapsed ? t.label : undefined}
+                      title={showLabels ? undefined : t.label}
                       className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-xs font-bold transition-colors ${
                         active ? 'bg-admin text-white' : 'text-white/65 hover:bg-white/10 hover:text-white'
-                      } ${collapsed ? 'justify-center' : ''}`}
+                      } ${showLabels ? '' : 'justify-center'}`}
                     >
                       <Icon path={icons[t.icon]} className="h-4 w-4 shrink-0" />
-                      {!collapsed && <span className="truncate">{t.label}</span>}
+                      {showLabels && <span className="truncate">{t.label}</span>}
                     </Link>
                   )
                 })}
@@ -167,7 +170,7 @@ export function AdminTabs({ collapsed, setCollapsed, mobileOpen, setMobileOpen }
         </nav>
 
         <div className="space-y-2 border-t border-white/10 px-2.5 py-3">
-          {!collapsed && (
+          {showLabels && (
             <span className="flex w-fit items-center gap-1.5 rounded-full bg-admin/90 px-3 py-1.5 text-[11px] font-bold text-white">
               <span className="h-1.5 w-1.5 rounded-full bg-white" />
               Administrator
@@ -175,10 +178,10 @@ export function AdminTabs({ collapsed, setCollapsed, mobileOpen, setMobileOpen }
           )}
           <button
             onClick={handleLogout}
-            className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-xs font-semibold text-white/70 transition-colors hover:bg-white/10 hover:text-white ${collapsed ? 'justify-center' : ''}`}
+            className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-xs font-semibold text-white/70 transition-colors hover:bg-white/10 hover:text-white ${showLabels ? '' : 'justify-center'}`}
           >
             <Icon path={icons.logout} className="h-4 w-4 shrink-0" />
-            {!collapsed && 'Log out'}
+            {showLabels && 'Log out'}
           </button>
           <button
             onClick={() => setCollapsed((c) => !c)}

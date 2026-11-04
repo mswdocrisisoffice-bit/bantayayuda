@@ -1178,7 +1178,7 @@ export default function ReportsTab() {
       `}</style>
 
       {/* ── Header ── */}
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-card bg-white/90 px-5 py-4 shadow-[0_2px_6px_rgba(0,0,0,0.08)]">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-card bg-white/90 px-4 py-4 shadow-[0_2px_6px_rgba(0,0,0,0.08)] sm:px-5">
         <div className="flex items-center gap-3">
           <span className="no-print flex h-10 w-10 items-center justify-center rounded-xl bg-admin-light text-admin-dark">
             <Icon path={icons.chart} className="h-5 w-5" />

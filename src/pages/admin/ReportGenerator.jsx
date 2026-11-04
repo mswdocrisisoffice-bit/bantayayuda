@@ -230,7 +230,7 @@ export default function ReportGenerator() {
       </div>
 
       {/* ── Printable page ── */}
-      <div className="print-page mx-auto max-w-[850px] bg-white p-10 text-[13px] leading-snug text-black shadow-lg">
+      <div className="print-page mx-auto w-full max-w-[850px] bg-white p-4 text-[13px] leading-snug text-black shadow-lg sm:p-8 md:p-10">
         {/* Header */}
         <div className="mb-4 flex items-center justify-between border-b-2 border-black pb-3">
           <img src={manoloFortichSeal} alt="Manolo Fortich official seal" className="w-16" />

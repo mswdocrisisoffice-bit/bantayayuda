@@ -1,4 +1,5 @@
-import { Routes, Route } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Routes, Route, useLocation } from 'react-router-dom'
 
 import LandingPage from './pages/LandingPage.jsx'
 
@@ -22,36 +23,51 @@ import BeneficiaryLogin from './pages/beneficiary/BeneficiaryLogin.jsx'
 import BeneficiaryDashboard from './pages/beneficiary/BeneficiaryDashboard.jsx'
 import AidHistory from './pages/beneficiary/AidHistory.jsx'
 
+/* A phone keeps the old scroll position when only the route changes.
+   Start every page at the top so a new screen never opens halfway down. */
+function ScrollToTop() {
+  const { pathname } = useLocation()
+
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [pathname])
+
+  return null
+}
+
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<LandingPage />} />
+    <>
+      <ScrollToTop />
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
 
-      {/* Donor */}
-      <Route path="/donor/login" element={<DonorLogin />} />
-      <Route path="/donor/dashboard" element={<DonorDashboard />} />
-      <Route path="/donor/status" element={<DistributionStatus />} />
+        {/* Donor */}
+        <Route path="/donor/login" element={<DonorLogin />} />
+        <Route path="/donor/dashboard" element={<DonorDashboard />} />
+        <Route path="/donor/status" element={<DistributionStatus />} />
 
-      {/* Administrator login stays outside the layout (no tabs/background needed there) */}
-      <Route path="/admin/login" element={<AdminLogin />} />
+        {/* Administrator login stays outside the layout (no tabs/background needed there) */}
+        <Route path="/admin/login" element={<AdminLogin />} />
 
-      {/* Administrator — all pages inside share the background photo + tab bar */}
-      <Route element={<AdminLayout />}>
-        <Route path="/admin/dashboard" element={<AdminDashboard />} />
-        <Route path="/admin/donations" element={<DonationsTab />} />
-        <Route path="/admin/beneficiaries" element={<BeneficiaryRegistryTab />} />
-        <Route path="/admin/distribution" element={<RecordDistributionTab />} />
-        <Route path="/admin/inventory" element={<InventoryTab />} />
-        <Route path="/admin/reports" element={<ReportsTab />} />
-        <Route path="/admin/ris" element={<RisTab />} />
-        <Route path="/admin/report-generator" element={<ReportGenerator />} />
-        <Route path="/admin/archive" element={<ArchiveTab />} />
-      </Route>
+        {/* Administrator — all pages inside share the background photo + tab bar */}
+        <Route element={<AdminLayout />}>
+          <Route path="/admin/dashboard" element={<AdminDashboard />} />
+          <Route path="/admin/donations" element={<DonationsTab />} />
+          <Route path="/admin/beneficiaries" element={<BeneficiaryRegistryTab />} />
+          <Route path="/admin/distribution" element={<RecordDistributionTab />} />
+          <Route path="/admin/inventory" element={<InventoryTab />} />
+          <Route path="/admin/reports" element={<ReportsTab />} />
+          <Route path="/admin/ris" element={<RisTab />} />
+          <Route path="/admin/report-generator" element={<ReportGenerator />} />
+          <Route path="/admin/archive" element={<ArchiveTab />} />
+        </Route>
 
-      {/* Beneficiary: login only. Accounts are created by staff in Record distribution */}
-      <Route path="/beneficiary/login" element={<BeneficiaryLogin />} />
-      <Route path="/beneficiary/dashboard" element={<BeneficiaryDashboard />} />
-      <Route path="/beneficiary/history" element={<AidHistory />} />
-    </Routes>
+        {/* Beneficiary: login only. Accounts are created by staff in Record distribution */}
+        <Route path="/beneficiary/login" element={<BeneficiaryLogin />} />
+        <Route path="/beneficiary/dashboard" element={<BeneficiaryDashboard />} />
+        <Route path="/beneficiary/history" element={<AidHistory />} />
+      </Routes>
+    </>
   )
 }

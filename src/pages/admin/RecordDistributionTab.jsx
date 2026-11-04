@@ -12,7 +12,7 @@ const emptyMember = { name: '', relation: '', birthdate: '', age: '', sex: '', e
 
 function SectionHeader({ children }) {
   return (
-    <div className="-mx-6 -mt-6 mb-4 bg-navy px-6 py-2.5">
+    <div className="-mx-4 -mt-4 mb-4 bg-navy px-4 py-2.5 sm:-mx-6 sm:-mt-6 sm:px-6">
       <h2 className="text-xs font-bold uppercase tracking-wide text-white">{children}</h2>
     </div>
   )
@@ -418,7 +418,7 @@ function QuickDistributionForm({ existingRecord, onDone }) {
 
   if (status === 'success') {
     return (
-      <Card className="p-6">
+      <Card className="p-4 sm:p-6">
         <div className="rounded border border-beneficiary-dark bg-beneficiary-light p-4">
           <p className="text-sm font-bold text-donor-dark">
             {accountResult?.queued ? 'Saved on this device ✓' : 'Distribution recorded ✓'}
@@ -474,7 +474,7 @@ function QuickDistributionForm({ existingRecord, onDone }) {
   }
 
   return (
-    <Card className="p-6">
+    <Card className="p-4 sm:p-6">
       <h2 className="mb-1 text-sm font-bold text-ink">Quick distribution</h2>
       <p className="mb-4 text-xs text-faint">
         Household details are already on file — just record what was given out this time.
@@ -630,7 +630,7 @@ function ExistingBeneficiaryFlow({ onSwitchToNew }) {
   }
 
   return (
-    <Card className="p-6">
+    <Card className="p-4 sm:p-6">
       <h2 className="mb-1 text-sm font-bold text-ink">Find existing beneficiary</h2>
       <p className="mb-4 text-xs text-faint">
         Enter the household's serial number to skip re-filling their details.
@@ -863,13 +863,13 @@ function NewFamilyForm({ prefillSerial }) {
   return (
     <div className="overflow-hidden rounded-lg border-2 border-navy bg-white">
 
-     <div className="border-b border-line bg-admin-light px-6 py-3 text-xs text-admin-dark">
+     <div className="border-b border-line bg-admin-light px-4 py-3 text-xs text-admin-dark sm:px-6">
   <span className="font-bold">Required:</span> the <b>name</b> (last + first name) and the <b>barangay</b> where
   the family lives, plus the item, quantity, and signature for what was given. Everything else is <b>optional</b> and
   can be filled in later. <span className="text-red-600">*</span> = required.
 </div>
 
-      <Card className="rounded-none border-0 border-b border-line p-6 shadow-none">
+      <Card className="rounded-none border-0 border-b border-line p-4 shadow-none sm:p-6">
         <SectionHeader>Location of the affected family</SectionHeader>
         <div className="grid grid-cols-1 gap-3 border border-line-soft p-3 sm:grid-cols-3">
           <Field number={1} label="Region"><input className={inputClass} value={form.region} onChange={(e) => update('region', e.target.value)} /></Field>
@@ -883,7 +883,7 @@ function NewFamilyForm({ prefillSerial }) {
         </div>
       </Card>
 
-      <Card className="rounded-none border-0 border-b border-line p-6 shadow-none">
+      <Card className="rounded-none border-0 border-b border-line p-4 shadow-none sm:p-6">
         <SectionHeader>Head of the family</SectionHeader>
         <div className="grid grid-cols-1 gap-3 border border-line-soft p-3 sm:grid-cols-3">
           <Field number={7} label="Last name" required><input className={inputClass} value={form.lastName} onChange={(e) => update('lastName', e.target.value)} /></Field>
@@ -930,7 +930,7 @@ function NewFamilyForm({ prefillSerial }) {
         </div>
       </Card>
 
-      <Card className="rounded-none border-0 border-b border-line p-6 shadow-none">
+      <Card className="rounded-none border-0 border-b border-line p-4 shadow-none sm:p-6">
         <div className="mb-2 flex items-center justify-between">
           <SectionHeader>25. Family information</SectionHeader>
         </div>
@@ -975,7 +975,7 @@ function NewFamilyForm({ prefillSerial }) {
         </div>
       </Card>
 
-      <Card className="rounded-none border-0 border-b border-line p-6 shadow-none">
+      <Card className="rounded-none border-0 border-b border-line p-4 shadow-none sm:p-6">
         <SectionHeader>26. No. of vulnerable family members</SectionHeader>
         <div className="grid grid-cols-2 gap-3 border border-line-soft p-3 sm:grid-cols-4">
           <Field label="No. of older persons"><input type="number" min="0" className={inputClass} value={form.vulnerableOlder} onChange={(e) => update('vulnerableOlder', e.target.value)} /></Field>
@@ -985,7 +985,7 @@ function NewFamilyForm({ prefillSerial }) {
         </div>
       </Card>
 
-      <Card className="rounded-none border-0 border-b border-line p-6 shadow-none">
+      <Card className="rounded-none border-0 border-b border-line p-4 shadow-none sm:p-6">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="border border-line-soft p-3">
             <div className="-mx-3 -mt-3 mb-3 bg-navy px-3 py-1.5">
@@ -1016,7 +1016,7 @@ function NewFamilyForm({ prefillSerial }) {
         </div>
       </Card>
 
-      <Card className="rounded-none border-0 border-b border-line p-6 shadow-none">
+      <Card className="rounded-none border-0 border-b border-line p-4 shadow-none sm:p-6">
         <SectionHeader>Relief goods distributed</SectionHeader>
         <div className="grid grid-cols-1 gap-3 border border-line-soft p-3 sm:grid-cols-2">
           <Field label="Item (from stock)" required>
@@ -1072,7 +1072,7 @@ function NewFamilyForm({ prefillSerial }) {
         </div>
       </Card>
 
-      <Card className="rounded-none border-0 border-b border-line p-6 shadow-none">
+      <Card className="rounded-none border-0 border-b border-line p-4 shadow-none sm:p-6">
         <SectionHeader>Registration details</SectionHeader>
         <div className="grid grid-cols-1 gap-3 border border-line-soft p-3 sm:grid-cols-3">
           <Field label="Date registered"><input type="date" className={inputClass} value={form.dateRegistered} onChange={(e) => update('dateRegistered', e.target.value)} /></Field>
@@ -1081,7 +1081,7 @@ function NewFamilyForm({ prefillSerial }) {
         </div>
       </Card>
 
-      <Card className="rounded-none border-0 border-b border-line p-6 shadow-none">
+      <Card className="rounded-none border-0 border-b border-line p-4 shadow-none sm:p-6">
         <SectionHeader>Beneficiary login (optional)</SectionHeader>
         <AccountPanel
           email={accountEmail}
@@ -1097,7 +1097,7 @@ function NewFamilyForm({ prefillSerial }) {
         />
       </Card>
 
-      <Card className="rounded-none border-0 p-6 shadow-none">
+      <Card className="rounded-none border-0 p-4 shadow-none sm:p-6">
         <SectionHeader>Signature/Thumbmark of family head <span className="text-red-300">*</span></SectionHeader>
         <div className="mb-4 border border-line-soft p-4">
           <div className="mb-2 text-xs font-bold text-ink">Hand device to recipient to confirm receipt</div>
@@ -1143,7 +1143,7 @@ export default function RecordDistributionTab() {
 
   return (
     <>
-      <div className="mb-6 flex items-center gap-3 rounded-card bg-white/90 p-5 shadow-[0_2px_6px_rgba(0,0,0,0.08)]">
+      <div className="mb-6 flex items-center gap-3 rounded-card bg-white/90 p-4 shadow-[0_2px_6px_rgba(0,0,0,0.08)] sm:p-5">
         <img src={dswdLogo} alt="DSWD logo" className="h-12 w-12 rounded-full object-contain" />
         <div>
           <h1 className="text-xl font-bold text-admin-dark">Record distribution</h1>

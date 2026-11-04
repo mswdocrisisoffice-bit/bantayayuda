@@ -2,6 +2,8 @@ const tones = {
   confirmed: 'bg-donor-light text-donor-dark',
   pending: 'bg-warn-bg text-warn-text',
   transit: 'bg-beneficiary-light text-beneficiary-dark',
+  government: 'bg-beneficiary-light text-beneficiary-dark',
+  nonGovernment: 'bg-donor-light text-donor-dark',
   neutral: 'bg-line-soft text-muted',
 }
 

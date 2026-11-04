@@ -27,8 +27,8 @@ export default function BeneficiaryLogin() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-cream px-4">
-      <Card className="w-full max-w-sm border-2 border-beneficiary-border p-8">
+    <div className="flex min-h-screen items-start justify-center overflow-y-auto bg-cream px-4 py-8 sm:items-center sm:py-4">
+      <Card className="w-full max-w-sm border-2 border-beneficiary-border p-6 sm:p-8">
         <div className="mb-1 text-lg font-bold text-beneficiary-dark">Beneficiary login</div>
         <p className="mb-6 text-xs text-faint">Log in to view your household's aid history</p>
 

@@ -135,7 +135,7 @@ export default function InventoryTab() {
 
   return (
     <>
-      <div className="mb-6 rounded-card bg-white/90 p-5 shadow-[0_2px_6px_rgba(0,0,0,0.08)]">
+      <div className="mb-6 rounded-card bg-white/90 p-4 shadow-[0_2px_6px_rgba(0,0,0,0.08)] sm:p-5">
         <h1 className="mb-1 text-xl font-bold text-admin-dark">Inventory</h1>
         <p className="text-xs text-faint">
           Auto-updated — stock increases when a donation is confirmed and decreases when it's distributed.
@@ -149,7 +149,7 @@ export default function InventoryTab() {
           return (
             <button key={s.key} onClick={() => pickStatus(s.key)} className="text-left">
               <Card
-                className={`p-5 transition hover:-translate-y-0.5 hover:border-admin ${
+                className={`p-4 transition hover:-translate-y-0.5 hover:border-admin sm:p-5 ${
                   active ? 'border-admin ring-2 ring-admin/40' : ''
                 }`}
               >
@@ -165,7 +165,7 @@ export default function InventoryTab() {
       </div>
 
       <div ref={stockRef} className="scroll-mt-4">
-        <Card className="p-6">
+        <Card className="p-4 sm:p-6">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-sm font-bold text-ink">Current stock</h2>

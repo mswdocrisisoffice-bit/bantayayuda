@@ -94,7 +94,7 @@ function RisSheet({ ris }) {
   ]
 
   return (
-    <div className="ris-print-page mx-auto max-w-[850px] bg-white text-[11px] leading-snug text-black shadow-lg">
+    <div className="ris-print-page mx-auto max-w-[850px] bg-white text-[11px] leading-snug text-black shadow-lg max-sm:min-w-[680px]">
       <table className="w-full border-collapse">
         <thead><tr><td><div className="ris-spacer" /></td></tr></thead>
         <tfoot><tr><td><div className="ris-spacer" /></td></tr></tfoot>
@@ -524,7 +524,11 @@ export default function RisTab() {
             {toast.text}
           </div>
         )}
-        <RisSheet ris={current} />
+        {/* The official RIS is a wide form. On a phone it scrolls sideways
+            instead of being squeezed until the columns are unreadable. */}
+        <div className="-mx-3 overflow-x-auto px-3 pb-3 sm:mx-0 sm:px-0">
+          <RisSheet ris={current} />
+        </div>
       </>
     )
   }
@@ -534,7 +538,7 @@ export default function RisTab() {
     const label = 'mb-1 block text-[10px] font-bold uppercase tracking-wide text-faint'
     return (
       <>
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-card bg-white/90 px-5 py-4 shadow-[0_2px_6px_rgba(0,0,0,0.08)]">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-card bg-white/90 px-4 py-4 shadow-[0_2px_6px_rgba(0,0,0,0.08)] sm:px-5">
           <div>
             <h1 className="text-lg font-bold leading-tight text-admin-dark">{form.id ? 'Edit RIS' : 'New RIS'}</h1>
             <p className="text-xs text-faint">
@@ -689,7 +693,7 @@ export default function RisTab() {
   /* ───────── LIST VIEW ───────── */
   return (
     <>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-card bg-white/90 px-5 py-4 shadow-[0_2px_6px_rgba(0,0,0,0.08)]">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-card bg-white/90 px-4 py-4 shadow-[0_2px_6px_rgba(0,0,0,0.08)] sm:px-5">
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-admin-light text-admin-dark">
             <Icon path={icons.doc} className="h-5 w-5" />
