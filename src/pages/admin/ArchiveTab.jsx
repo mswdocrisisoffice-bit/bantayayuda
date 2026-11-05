@@ -2,6 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import Card from '../../components/ui/Card.jsx'
 import PageBanner from '../../components/ui/PageBanner.jsx'
 import { supabase } from '../../lib/supabase.js'
+import {
+  loadReturnedDistributions,
+  restoreHouseholdStock,
+} from '../../lib/inventoryReturns.js'
 
 /* ── Small inline icons (same style as Reports) ── */
 function Icon({ path, className = 'h-4 w-4' }) {
@@ -166,13 +170,72 @@ export default function ArchiveTab() {
     const t = TYPES[item.type]
     setBusyKey(item.key)
     setError('')
-    const { error: err } = await supabase.from(t.table).update(t.restore).eq('id', item.id)
+
+    // A household may have had its items returned to inventory when it was
+    // archived. Restoring it means those items belong to the household again,
+    // so take the same quantities back out of inventory. Always ask the
+    // database function; it knows exactly which rows it marked on return,
+    // even when the household details were edited in the meantime.
+    const household = households.find((h) => h.id === item.id) || { id: item.id }
+    let stockResult = item.type === 'household' ? await restoreHouseholdStock(household.id) : null
+
+    if (stockResult?.error) {
+      if (stockResult.error.code !== 'RETURN_FUNCTION_MISSING') {
+        setBusyKey(null)
+        setError(`Could not take the items back from inventory: ${stockResult.error.message}`)
+        return
+      }
+
+      // The database function is not installed yet. That is only a problem if
+      // this household actually had items returned, so check that first.
+      const returned = await loadReturnedDistributions(household)
+      if (returned.rows?.length) {
+        setBusyKey(null)
+        setError(
+          'Restoring returned stock is not set up in the database yet. Run supabase/migrations/20261105_return_distribution_stock.sql in the Supabase SQL Editor, then try again.'
+        )
+        return
+      }
+
+      stockResult = null
+    }
+
+    const { data: updatedRows, error: err } = await supabase
+      .from(t.table)
+      .update(t.restore)
+      .eq('id', item.id)
+      .select('id')
+
     setBusyKey(null)
-    if (err) {
-      setError(`Could not restore: ${err.message}`)
+
+    if (err || !updatedRows || updatedRows.length === 0) {
+      setError(
+        err
+          ? `Could not restore: ${err.message}`
+          : 'Could not restore. Check that your account still has admin access.'
+      )
       return
     }
-    flash('Restored. It is back in its active list.')
+
+    if (stockResult) {
+      const restoredCount = stockResult.restored || 0
+      const skipped = stockResult.skipped?.length || 0
+      const shortages = stockResult.shortages?.length || 0
+
+      if (restoredCount) {
+        flash(
+          `Restored. ${restoredCount} item${restoredCount === 1 ? '' : 's'} taken back from inventory.` +
+            (skipped ? ` ${skipped} could not be matched in inventory.` : '') +
+            (shortages ? ' Some stock went below zero because it was already used.' : '')
+        )
+      } else if (skipped) {
+        flash('Restored, but the returned items could not be matched in inventory.')
+      } else {
+        flash('Restored. It is back in its active list.')
+      }
+    } else {
+      flash('Restored. It is back in its active list.')
+    }
     loadAll()
   }
 

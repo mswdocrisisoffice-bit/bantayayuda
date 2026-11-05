@@ -317,7 +317,7 @@ function ArchiveHouseholdModal({ household, onClose, onArchived }) {
 
     let returnResult = null
     if (returnStock) {
-      returnResult = await returnDistributionsToInventory(selectedIds)
+      returnResult = await returnDistributionsToInventory(selectedIds, household.id)
       if (returnResult.error) {
         setBusy(false)
         setError(

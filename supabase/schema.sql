@@ -71,6 +71,7 @@ create table distributions (
   signature_path text,
   status text default 'confirmed',
   stock_returned_at timestamptz,
+  stock_returned_for uuid,
   created_at timestamptz default now()
 );
 
