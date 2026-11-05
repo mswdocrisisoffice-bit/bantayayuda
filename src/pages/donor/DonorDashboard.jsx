@@ -24,6 +24,7 @@ const icons = {
   user: <><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" /></>,
   card: <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></>,
   heart: <path d="M12 21s-7-4.6-9.3-9A5.2 5.2 0 0 1 12 6.5 5.2 5.2 0 0 1 21.3 12C19 16.4 12 21 12 21z" />,
+  logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" /></>,
 }
 
 const GREEN = '#4d7c0f'
@@ -228,7 +229,7 @@ export default function DonorDashboard() {
   ]
 
   return (
-    <div className="min-h-screen bg-cream pb-12">
+    <div className="min-h-screen bg-cream pb-28 lg:pb-12">
       {/* Hero */}
       <header className="relative overflow-hidden bg-gradient-to-br from-[#0f3a6b] via-[#0b2545] to-[#081a31] px-4 pb-16 pt-6 text-white sm:pt-8">
         <div className="pointer-events-none absolute -right-20 -top-24 h-80 w-80 rounded-full bg-[#1d5fa8]/25" />
@@ -245,7 +246,7 @@ export default function DonorDashboard() {
           </div>
           <button
             onClick={handleLogout}
-            className="rounded-lg border border-white/25 bg-white/5 px-4 py-2 text-xs font-semibold text-white/90 transition hover:bg-white/10"
+            className="hidden rounded-lg border border-white/25 bg-white/5 px-4 py-2 text-xs font-semibold text-white/90 transition hover:bg-white/10 sm:inline-flex"
           >
             Log out
           </button>
@@ -281,7 +282,7 @@ export default function DonorDashboard() {
         </div>
 
         {/* Tabs */}
-        <div className="mt-6 flex gap-2 overflow-x-auto rounded-2xl bg-white p-2 shadow-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="mt-6 hidden gap-2 overflow-x-auto rounded-2xl bg-white p-2 shadow-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex">
           {TABS.map((t) => {
             const active = tab === t.key
             return (
@@ -337,7 +338,7 @@ export default function DonorDashboard() {
                       return (
                         <div
                           key={d.id}
-                          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line-soft px-4 py-3 transition hover:bg-line-soft/30"
+                          className="flex flex-col gap-2.5 rounded-xl border border-line-soft px-3 py-3 transition hover:bg-line-soft/30 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-4"
                         >
                           <div className="flex min-w-0 items-center gap-3">
                             <span
@@ -357,7 +358,7 @@ export default function DonorDashboard() {
                               </div>
                             </div>
                           </div>
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2 pl-[52px] sm:pl-0">
                             <PayChip d={d} />
                             <DistPill info={distInfo(d)} />
                             <span
@@ -474,7 +475,7 @@ export default function DonorDashboard() {
             </div>
 
             {categoryChips.length > 1 && (
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 sm:pb-0 [&::-webkit-scrollbar]:hidden">
                 {['All', ...categoryChips].map((c) => {
                   const active = catFilter === c
                   const col = c === 'All' ? { accent: GREEN, bg: '#ECF3DF' } : categoryColor(c)
@@ -482,7 +483,7 @@ export default function DonorDashboard() {
                     <button
                       key={c}
                       onClick={() => setCatFilter(c)}
-                      className="rounded-full border px-3 py-1.5 text-[11px] font-semibold transition"
+                      className="shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-[11px] font-semibold transition"
                       style={
                         active
                           ? { background: col.accent, borderColor: col.accent, color: '#fff' }
@@ -621,6 +622,46 @@ export default function DonorDashboard() {
           </div>
         )}
       </div>
+
+      {/* ── Phone bottom navigation (same pattern as the admin side) ── */}
+      <nav className="no-print fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 shadow-[0_-2px_10px_rgba(0,0,0,0.06)] backdrop-blur lg:hidden">
+        <div
+          className="mx-auto flex max-w-lg items-stretch"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
+          {TABS.map((t) => {
+            const active = tab === t.key
+            return (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`flex flex-1 flex-col items-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-bold transition-colors ${
+                  active ? '' : 'text-faint'
+                }`}
+                style={active ? { color: GREEN } : undefined}
+              >
+                <span
+                  className="flex h-9 w-9 items-center justify-center rounded-xl"
+                  style={active ? { background: '#ECF3DF' } : undefined}
+                >
+                  <Icon path={icons[t.icon]} className="h-5 w-5" />
+                </span>
+                <span className="truncate">{t.label}</span>
+              </button>
+            )
+          })}
+
+          <button
+            onClick={handleLogout}
+            className="flex flex-1 flex-col items-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-bold text-faint transition-colors hover:text-admin"
+          >
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl">
+              <Icon path={icons.logout} className="h-5 w-5" />
+            </span>
+            <span className="truncate">Log out</span>
+          </button>
+        </div>
+      </nav>
     </div>
   )
 }

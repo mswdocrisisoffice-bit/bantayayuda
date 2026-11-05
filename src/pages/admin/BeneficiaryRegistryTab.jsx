@@ -397,14 +397,14 @@ export default function BeneficiaryRegistryTab() {
             className="w-full rounded-lg border border-line bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-admin focus:ring-2 focus:ring-admin/20"
           />
         </div>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 sm:pb-0 [&::-webkit-scrollbar]:hidden">
           {FILTER_CHIPS.map((c) => {
             const active = filter === c.key
             return (
               <button
                 key={c.key}
                 onClick={() => setFilter(c.key)}
-                className={`rounded-full border-2 px-3.5 py-1.5 text-[11px] font-bold transition ${
+                className={`shrink-0 whitespace-nowrap rounded-full border-2 px-3.5 py-1.5 text-[11px] font-bold transition ${
                   active
                     ? 'border-admin bg-admin text-white'
                     : 'border-line-soft bg-white text-muted hover:border-admin hover:text-admin-dark'
@@ -468,15 +468,15 @@ export default function BeneficiaryRegistryTab() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') setExpandedId(open ? null : h.id)
                 }}
-                className="flex cursor-pointer items-start justify-between gap-3 p-4 transition hover:bg-line-soft/40"
+                className="cursor-pointer p-3.5 transition hover:bg-line-soft/40 sm:p-4"
               >
-                <div className="flex min-w-0 items-start gap-3">
+                <div className="flex items-start gap-3">
                   <Avatar name={tidy(h.household_head)} size="sm" />
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-bold text-ink">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-bold leading-snug text-ink [overflow-wrap:anywhere]">
                       {tidy(h.household_head) || 'Unnamed household'}
                     </div>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-faint">
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-faint">
                       <span className="inline-flex items-center gap-1">
                         <Icon path={icons.pin} className="h-3 w-3" />
                         {tidy(h.barangay) || '—'}
@@ -510,17 +510,19 @@ export default function BeneficiaryRegistryTab() {
                   </div>
                 </div>
 
-                <div className="flex shrink-0 flex-col items-center">
-                  <span className="rounded-lg bg-admin-light px-3 py-1.5 text-center text-admin-dark">
-                    <span className="block text-xl font-bold leading-none">{h.household_size || 0}</span>
-                    <span className="text-[10px] font-semibold">member{Number(h.household_size) === 1 ? '' : 's'}</span>
+                <div className="mt-3 flex items-center justify-between gap-2 border-t border-line-soft pt-2.5">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-admin-light px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-admin-dark">
+                    <Icon path={icons.users} className="h-3 w-3" />
+                    {h.household_size || 0} member{Number(h.household_size) === 1 ? '' : 's'}
                   </span>
-                  <span className="mt-1 text-xs text-faint">{open ? '▲' : '▼'}</span>
+                  <span className="shrink-0 text-[11px] font-bold text-admin-dark">
+                    {open ? 'Hide details ▲' : 'View details ▼'}
+                  </span>
                 </div>
               </div>
 
               {open && (
-                <div className="border-t border-line-soft bg-line-soft/30 p-4">
+                <div className="border-t border-line-soft bg-line-soft/30 p-3.5 sm:p-4">
                   <div className="grid gap-2 text-xs text-muted sm:grid-cols-2">
                     <div>
                       <span className="font-semibold text-ink">Address:</span>{' '}
@@ -549,9 +551,9 @@ export default function BeneficiaryRegistryTab() {
                         {members.map((m, i) => (
                           <div
                             key={i}
-                            className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 text-xs"
+                            className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 rounded-lg bg-white px-3 py-2 text-xs"
                           >
-                            <span className="min-w-0 truncate font-semibold text-ink">
+                            <span className="min-w-0 font-semibold text-ink [overflow-wrap:anywhere]">
                               {tidy(m.name) || '—'}
                               {m.relation ? <span className="font-normal text-faint"> · {m.relation}</span> : null}
                             </span>
@@ -565,10 +567,10 @@ export default function BeneficiaryRegistryTab() {
                     )}
                   </div>
 
-                  <div className="mt-4 flex flex-wrap gap-2">
+                  <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
                     <button
                       onClick={() => setEditingId(h.id)}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-[11px] font-bold text-ink shadow-sm hover:bg-line-soft"
+                      className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-[11px] font-bold text-ink shadow-sm hover:bg-line-soft"
                     >
                       <Icon path={icons.edit} className="h-3.5 w-3.5" />
                       Edit
@@ -580,7 +582,7 @@ export default function BeneficiaryRegistryTab() {
                         }
                       }}
                       disabled={busyId === h.id}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-admin px-3.5 py-2 text-[11px] font-bold text-white hover:bg-admin-dark disabled:opacity-50"
+                      className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-admin px-3.5 py-2 text-[11px] font-bold text-white hover:bg-admin-dark disabled:opacity-50"
                     >
                       <Icon path={icons.archive} className="h-3.5 w-3.5" />
                       {busyId === h.id ? 'Archiving…' : 'Archive'}

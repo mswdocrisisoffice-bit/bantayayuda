@@ -56,7 +56,6 @@ export default function BeneficiaryDashboard() {
   const [lastSignIn, setLastSignIn] = useState(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('overview') // 'overview' | 'settings'
-  const [menuOpen, setMenuOpen] = useState(false)
   const [form, setForm] = useState({ username: '', phone: '', address: '', alt_name: '', alt_phone: '' })
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -242,34 +241,21 @@ export default function BeneficiaryDashboard() {
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-cream">
-      {/* Mobile top bar */}
-      <div className="sticky top-0 z-30 flex items-center justify-between bg-navy px-4 py-3 text-white lg:hidden">
-        <span className="font-bold">BantayAyuda</span>
-        <button onClick={() => setMenuOpen(true)} aria-label="Open menu">
-          <Icon path={icons.menu} className="h-6 w-6" />
-        </button>
-      </div>
-      {menuOpen && <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setMenuOpen(false)} />}
-
-      {/* Sidebar */}
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-navy text-white transition-transform lg:translate-x-0 ${
-          menuOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-      >
+      {/* Sidebar — desktop only. Phones use the bottom navigation below. */}
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col bg-navy text-white lg:flex">
         <div className="border-b border-white/10 px-5 py-5">
           <div className="text-lg font-bold">BantayAyuda</div>
           <div className="text-xs text-white/60">Manolo Fortich</div>
         </div>
 
         <nav className="flex-1 space-y-1 px-3 py-4">
-          <button className={navItem(tab === 'overview')} onClick={() => { setTab('overview'); setMenuOpen(false) }}>
+          <button className={navItem(tab === 'overview')} onClick={() => setTab('overview')}>
             <Icon path={icons.home} className="h-4 w-4" /> Overview
           </button>
           <Link to="/beneficiary/history" className={navItem(false)}>
             <Icon path={icons.history} className="h-4 w-4" /> Aid history
           </Link>
-          <button className={navItem(tab === 'settings')} onClick={() => { setTab('settings'); setMenuOpen(false) }}>
+          <button className={navItem(tab === 'settings')} onClick={() => setTab('settings')}>
             <Icon path={icons.user} className="h-4 w-4" /> Profile settings
           </button>
         </nav>
@@ -286,7 +272,7 @@ export default function BeneficiaryDashboard() {
       {toast && (
         <div
           role="status"
-          className={`fixed left-4 right-4 top-16 z-[60] sm:left-auto sm:top-4 sm:max-w-sm rounded-lg px-4 py-3 text-sm font-semibold shadow-lg ${
+          className={`fixed left-4 right-4 top-4 z-[60] sm:left-auto sm:max-w-sm rounded-lg px-4 py-3 text-sm font-semibold shadow-lg ${
             toast.type === 'ok' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
           }`}
         >
@@ -295,10 +281,10 @@ export default function BeneficiaryDashboard() {
       )}
 
       {/* Main */}
-      <main className="pb-10 lg:pl-64">
+      <main className="pb-28 lg:pl-64 lg:pb-10">
         <div className="mx-auto max-w-5xl px-3 pt-4 sm:px-4 sm:pt-6">
           {/* Hero banner */}
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#1e4a7a] to-[#0b2545] p-4 sm:p-6 text-white shadow-lg">
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#1e4a7a] to-[#0b2545] p-4 text-white shadow-lg sm:p-6">
             <div className="pointer-events-none absolute -right-10 -top-16 h-56 w-56 rounded-full bg-white/10" />
             <div className="relative flex min-w-0 items-center gap-4">
               <AvatarView />
@@ -306,7 +292,7 @@ export default function BeneficiaryDashboard() {
                 <p className="text-xs font-semibold text-white/75">
                   {tab === 'overview' ? 'Beneficiary dashboard' : 'Profile settings'}
                 </p>
-                <h1 className="truncate text-xl font-extrabold sm:text-2xl">{loading ? 'Loading…' : displayName}</h1>
+                <h1 className="truncate text-lg font-extrabold sm:text-2xl">{loading ? 'Loading…' : displayName}</h1>
                 <p className="truncate text-sm text-white/75">
                   {household?.barangay ? `Brgy. ${household.barangay} · ` : ''}{email}
                 </p>
@@ -316,15 +302,15 @@ export default function BeneficiaryDashboard() {
 
           {tab === 'overview' ? (
             <>
-              <div className="mt-4 grid grid-cols-1 gap-3 sm:mt-5 sm:grid-cols-3 sm:gap-4">
+              <div className="mt-4 grid grid-cols-3 gap-2 sm:mt-5 sm:gap-4">
                 {statCards.map((s) => (
-                  <Card key={s.label} className="p-4 sm:p-5" style={{ borderTop: `4px solid ${s.accent}` }}>
-                    <div className="flex items-start justify-between">
+                  <Card key={s.label} className="p-3 pt-4 sm:p-5" style={{ borderTop: `4px solid ${s.accent}` }}>
+                    <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="text-sm text-faint">{s.label}</div>
-                        <div className="mt-1 truncate text-lg font-bold text-ink">{loading ? '…' : s.value}</div>
+                        <div className="text-[10px] font-semibold leading-tight text-faint sm:text-sm">{s.label}</div>
+                        <div className="mt-1 truncate text-sm font-bold text-ink sm:text-lg">{loading ? '…' : s.value}</div>
                       </div>
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-black/5" style={{ color: s.accent }}>
+                      <div className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-black/5 sm:flex" style={{ color: s.accent }}>
                         <Icon path={icons[s.icon]} className="h-5 w-5" />
                       </div>
                     </div>
@@ -626,6 +612,58 @@ export default function BeneficiaryDashboard() {
           )}
         </div>
       </main>
+
+      {/* ── Phone bottom navigation (same pattern as the admin side) ── */}
+      <nav className="no-print fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 shadow-[0_-2px_10px_rgba(0,0,0,0.06)] backdrop-blur lg:hidden">
+        <div
+          className="mx-auto flex max-w-lg items-stretch"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
+          <button
+            onClick={() => setTab('overview')}
+            className={`flex flex-1 flex-col items-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-bold transition-colors ${
+              tab === 'overview' ? 'text-beneficiary' : 'text-faint'
+            }`}
+          >
+            <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${tab === 'overview' ? 'bg-beneficiary-light' : ''}`}>
+              <Icon path={icons.home} className="h-5 w-5" />
+            </span>
+            <span className="truncate">Overview</span>
+          </button>
+
+          <Link
+            to="/beneficiary/history"
+            className="flex flex-1 flex-col items-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-bold text-faint transition-colors"
+          >
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl">
+              <Icon path={icons.history} className="h-5 w-5" />
+            </span>
+            <span className="truncate">History</span>
+          </Link>
+
+          <button
+            onClick={() => setTab('settings')}
+            className={`flex flex-1 flex-col items-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-bold transition-colors ${
+              tab === 'settings' ? 'text-beneficiary' : 'text-faint'
+            }`}
+          >
+            <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${tab === 'settings' ? 'bg-beneficiary-light' : ''}`}>
+              <Icon path={icons.user} className="h-5 w-5" />
+            </span>
+            <span className="truncate">Profile</span>
+          </button>
+
+          <button
+            onClick={handleLogout}
+            className="flex flex-1 flex-col items-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-bold text-faint transition-colors hover:text-admin"
+          >
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl">
+              <Icon path={icons.logout} className="h-5 w-5" />
+            </span>
+            <span className="truncate">Log out</span>
+          </button>
+        </div>
+      </nav>
     </div>
   )
 }
