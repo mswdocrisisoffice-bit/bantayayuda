@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import dswdLogo from '../../assets/dswd-logo.png'
 import Card from '../../components/ui/Card.jsx'
@@ -131,6 +131,23 @@ async function createBeneficiaryAccount({ email, password, username, householdHe
   return { userId: data?.userId }
 }
 
+/* ── Matching a saved distribution to a household that has a login ── */
+const digitsOnly = (value) => String(value || '').replace(/\D/g, '')
+const normalizeText = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
+function householdKey(record) {
+  return `${normalizeText(record.household_head)}|${normalizeText(record.barangay)}`
+}
+
+function splitHeadName(record) {
+  const parts = String(record.household_head || '').split(',').map((s) => s.trim())
+  return {
+    lastName: record.head_last_name || parts[0] || '',
+    firstName: record.head_first_name || parts[1] || '',
+    middleName: record.head_middle_name || parts[2] || '',
+  }
+}
+
 /* ── "Give this household a login" panel. Used by both the new-family
    and existing-beneficiary flows so the beneficiary can later see, on
    their own dashboard, everything they've received. ── */
@@ -145,6 +162,12 @@ function AccountPanel({ email, setEmail, password, setPassword, username, setUse
         Optional — dili sila kabalo unsay ilang nadawat kung wala silay account. I-type ang ilang email,
         ug naay awtomatik nga password nga pwede nimo ilisan.
       </p>
+      {show && !String(email || '').trim() && (
+        <p className="mt-2 rounded border border-warn-text bg-warn-bg px-3 py-2 text-[11px] font-semibold text-warn-text">
+          Enter the beneficiary's email to create the login, or untick this box. Kung nalimtan, pwede pa kini buhaton
+          later sa “Create pending login”.
+        </p>
+      )}
 
       {show && (
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -223,7 +246,7 @@ function AccountPanel({ email, setEmail, password, setPassword, username, setUse
 /* ── Mode picker: New family vs. Existing beneficiary ── */
 function ModePicker({ mode, onSelect }) {
   return (
-    <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
       <button
         onClick={() => onSelect('new')}
         className={`rounded-lg border-2 p-4 text-left transition ${
@@ -246,7 +269,317 @@ function ModePicker({ mode, onSelect }) {
           Already on file — just enter their serial number, then record the new item and signature.
         </div>
       </button>
+      <button
+        onClick={() => onSelect('pending')}
+        className={`rounded-lg border-2 p-4 text-left transition ${
+          mode === 'pending' ? 'border-beneficiary bg-beneficiary-light' : 'border-line bg-white hover:border-beneficiary/50'
+        }`}
+      >
+        <div className="text-sm font-bold text-ink">Create pending login</div>
+        <div className="mt-1 text-xs text-faint">
+          For a household already saved in a past record whose beneficiary account was not created yet.
+        </div>
+      </button>
     </div>
+  )
+}
+
+/* ── Create a login later, using the info already saved in a distribution ── */
+function PendingAccountCard({ record, onDone }) {
+  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState(() => suggestUsername(record.household_head))
+  const [password, setPassword] = useState(() => randomPassword())
+  const [saving, setSaving] = useState(false)
+  const [result, setResult] = useState(null)
+  const head = splitHeadName(record)
+
+  async function handleCreate() {
+    if (saving) return
+    if (!email.trim()) return setResult({ error: 'Enter the beneficiary email address first.' })
+    if (password.length < 6) return setResult({ error: 'The password must be at least 6 characters.' })
+
+    setSaving(true)
+    setResult(null)
+    const res = await createBeneficiaryAccount({
+      email: email.trim(),
+      password,
+      username: username.trim(),
+      householdHead: record.household_head,
+      lastName: head.lastName,
+      firstName: head.firstName,
+      middleName: head.middleName,
+      barangay: record.barangay,
+      contactNumber: record.contact_primary,
+      householdSize: Array.isArray(record.family_members)
+        ? record.family_members.filter((m) => m?.name?.trim()).length
+        : undefined,
+    })
+    setSaving(false)
+    setResult(res)
+  }
+
+  if (result?.userId) {
+    return (
+      <div className="rounded-lg border border-beneficiary-dark bg-beneficiary-light p-4 text-xs">
+        <p className="text-sm font-bold text-donor-dark">Login created ✓</p>
+        <p className="mt-2 leading-relaxed text-beneficiary-dark">
+          <span className="font-bold">Email:</span> {email.trim()}
+          <br />
+          <span className="font-bold">Password:</span> <span className="font-mono font-bold">{password}</span>
+          {username.trim() && (
+            <>
+              <br />
+              <span className="font-bold">Username:</span> {username.trim()}
+            </>
+          )}
+        </p>
+        <p className="mt-2 text-faint">
+          Isulat kini sa ilang FACED card. Makita na nila ang ilang mga nadawat gamit kini nga account.
+        </p>
+        <button
+          type="button"
+          onClick={onDone}
+          className="mt-3 rounded-lg bg-beneficiary px-4 py-2 text-xs font-bold text-white hover:bg-beneficiary-dark"
+        >
+          Done
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div className="mb-3 rounded-lg border border-line-soft bg-line-soft/40 p-3 text-[11px] text-muted">
+        <div className="text-sm font-semibold text-ink">{record.household_head}</div>
+        <div>Brgy. {record.barangay || '—'} · Serial: {record.serial_number || '—'}</div>
+        {record.item && (
+          <div>Last recorded: {record.item} · {record.quantity} {record.unit || ''}</div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-muted">Beneficiary email</label>
+          <input
+            type="email"
+            placeholder="e.g. name@email.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className={inputClass}
+          />
+          <p className="mt-1 text-[11px] text-faint">Needed for signing in. Ask the household for their active email.</p>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-muted">Username (display only)</label>
+          <div className="flex gap-2">
+            <input value={username} onChange={(e) => setUsername(e.target.value)} className={inputClass} />
+            <button
+              type="button"
+              onClick={() => setUsername(suggestUsername(record.household_head))}
+              className="shrink-0 rounded border border-line px-2.5 text-xs font-semibold text-admin-dark hover:bg-line-soft"
+            >
+              ↻
+            </button>
+          </div>
+        </div>
+        <div className="sm:col-span-2">
+          <label className="mb-1 block text-xs font-semibold text-muted">Password</label>
+          <div className="flex gap-2">
+            <input value={password} onChange={(e) => setPassword(e.target.value)} className={inputClass + ' font-mono'} />
+            <button
+              type="button"
+              onClick={() => setPassword(randomPassword())}
+              className="shrink-0 rounded border border-line px-2.5 text-xs font-semibold text-admin-dark hover:bg-line-soft"
+            >
+              ↻ New
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {result?.error && (
+        <p className="mt-3 rounded border border-warn-text bg-warn-bg px-3 py-2 text-xs font-semibold text-warn-text">
+          {result.error}
+        </p>
+      )}
+
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={handleCreate}
+          disabled={saving || !email.trim()}
+          className="rounded-lg bg-beneficiary px-4 py-2 text-xs font-bold text-white hover:bg-beneficiary-dark disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {saving ? 'Creating…' : 'Create beneficiary account'}
+        </button>
+        <span className="text-[11px] text-faint">Needs an internet connection.</span>
+      </div>
+    </div>
+  )
+}
+
+/* ── List of saved households that still have no beneficiary login ── */
+function PendingLoginFlow() {
+  const [distributions, setDistributions] = useState([])
+  const [beneficiaries, setBeneficiaries] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
+  const [activeId, setActiveId] = useState(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  useEffect(() => {
+    let alive = true
+    async function load() {
+      setLoading(true)
+      setError('')
+      const [d, b] = await Promise.all([
+        supabase
+          .from('distributions')
+          .select('id, serial_number, household_head, barangay, contact_primary, head_last_name, head_first_name, head_middle_name, family_members, item, quantity, unit, created_at')
+          .order('created_at', { ascending: false })
+          .limit(500),
+        supabase.from('beneficiaries').select('id, household_head, contact_number, barangay'),
+      ])
+      if (!alive) return
+      if (d.error) {
+        setError('Could not load the saved records. Check your connection and try again.')
+        setLoading(false)
+        return
+      }
+      setDistributions(d.data || [])
+      setBeneficiaries(b.error ? [] : b.data || [])
+      setLoading(false)
+    }
+    load()
+    return () => { alive = false }
+  }, [refreshKey])
+
+  const pending = useMemo(() => {
+    const accountNames = new Set()
+    const accountContacts = new Set()
+    beneficiaries.forEach((b) => {
+      if (normalizeText(b.household_head)) accountNames.add(householdKey(b))
+      const digits = digitsOnly(b.contact_number)
+      if (digits) accountContacts.add(digits)
+    })
+
+    const seen = new Set()
+    return distributions.filter((r) => {
+      if (!r.household_head) return false
+      const key = householdKey(r)
+      const digits = digitsOnly(r.contact_primary)
+      if (accountNames.has(key) || (digits && accountContacts.has(digits))) return false
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }, [distributions, beneficiaries])
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return pending
+    return pending.filter((r) =>
+      [r.household_head, r.barangay, r.serial_number].some((value) =>
+        String(value || '').toLowerCase().includes(q)
+      )
+    )
+  }, [pending, search])
+
+  return (
+    <Card className="p-4 sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="mb-1 text-sm font-bold text-ink">Households without a login yet</h2>
+          <p className="text-xs text-faint">
+            These families are already saved in Record Distribution but have no beneficiary account.
+            Open one to create the login using the details they already gave — no need to retype the form.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setRefreshKey((k) => k + 1)}
+          className="shrink-0 rounded-lg border border-line bg-white px-3 py-2 text-xs font-bold text-admin-dark hover:bg-line-soft"
+        >
+          ↻ Refresh
+        </button>
+      </div>
+
+      <div className="mt-4">
+        <input
+          placeholder="Search name, barangay, or serial number"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className={inputClass}
+        />
+      </div>
+
+      {loading && (
+        <p className="mt-4 rounded-lg border border-line-soft bg-line-soft/40 px-4 py-3 text-xs text-faint">
+          Loading saved records…
+        </p>
+      )}
+
+      {!loading && error && (
+        <p className="mt-4 rounded-lg border border-warn-text bg-warn-bg px-4 py-3 text-xs font-semibold text-warn-text">
+          {error}
+        </p>
+      )}
+
+      {!loading && !error && filtered.length === 0 && (
+        <p className="mt-4 rounded-lg border border-line-soft bg-line-soft/40 px-4 py-3 text-xs text-faint">
+          {pending.length === 0
+            ? 'Every household in the saved records already has a login account.'
+            : 'No saved household matches your search.'}
+        </p>
+      )}
+
+      {!loading && !error && filtered.length > 0 && (
+        <div className="mt-4 space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-faint">
+            {filtered.length} household{filtered.length === 1 ? '' : 's'} without a login
+          </p>
+          {filtered.map((record) => {
+            const open = activeId === record.id
+            const date = record.created_at
+              ? new Date(record.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+              : ''
+            return (
+              <div key={record.id} className={`rounded-lg border ${open ? 'border-beneficiary' : 'border-line-soft'}`}>
+                <button
+                  type="button"
+                  onClick={() => setActiveId(open ? null : record.id)}
+                  className="flex w-full flex-wrap items-center justify-between gap-2 p-3 text-left"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-bold text-ink">{record.household_head}</div>
+                    <div className="text-[11px] text-faint">
+                      Brgy. {record.barangay || '—'} · Serial {record.serial_number || '—'}
+                      {record.item ? ` · ${record.item}` : ''}
+                      {date ? ` · ${date}` : ''}
+                    </div>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-beneficiary-light px-2.5 py-1 text-[10px] font-bold text-beneficiary-dark">
+                    {open ? 'Close' : 'Create login'}
+                  </span>
+                </button>
+                {open && (
+                  <div className="border-t border-line-soft p-3">
+                    <PendingAccountCard
+                      record={record}
+                      onDone={() => {
+                        setActiveId(null)
+                        setRefreshKey((k) => k + 1)
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </Card>
   )
 }
 
@@ -464,6 +797,12 @@ function QuickDistributionForm({ existingRecord, onDone }) {
           </div>
         )}
 
+        {hasAccount === false && !accountResult?.userId && !accountResult?.hasAccount && (
+          <p className="mt-3 rounded border border-warn-text bg-warn-bg px-3 py-2 text-xs font-semibold text-warn-text">
+            This household still has no login. Create it later from “Create pending login”.
+          </p>
+        )}
+
         <button
           onClick={onDone}
           className="mt-4 text-xs font-semibold text-admin-dark hover:underline"
@@ -573,7 +912,7 @@ function QuickDistributionForm({ existingRecord, onDone }) {
       <div className="mt-4 flex items-center gap-3">
         <Button
           variant="admin"
-          disabled={!signature || !selected || !quantity || overStock || status === 'saving'}
+          disabled={!signature || !selected || !quantity || overStock || status === 'saving' || (wantAccount && !accountEmail.trim())}
           onClick={handleSubmit}
         >
           {status === 'saving' ? 'Saving…' : 'Confirm distribution'}
@@ -674,7 +1013,7 @@ function ExistingBeneficiaryFlow({ onSwitchToNew }) {
 }
 
 /* ── Full FACED registration form for a brand-new family ── */
-function NewFamilyForm({ prefillSerial }) {
+function NewFamilyForm({ prefillSerial, onOpenPending }) {
   const [serialNumber] = useState(prefillSerial || '')
   const [inventory, setInventory] = useState([])
   const [loadingInventory, setLoadingInventory] = useState(true)
@@ -732,6 +1071,7 @@ function NewFamilyForm({ prefillSerial }) {
     !selectedInventoryItem && 'item',
     !form.quantity && 'quantity',
     !signature && 'signature',
+    wantAccount && !accountEmail.trim() && 'beneficiary email for the login',
   ].filter(Boolean)
   const canSubmit = missing.length === 0 && !overStock && status !== 'saving'
 
@@ -1168,6 +1508,15 @@ function NewFamilyForm({ prefillSerial }) {
               {accountResult?.queued ? 'Saved on this device — it will upload automatically when the signal returns.' : 'Distribution recorded.'}
             </p>
             <p className="mt-1 text-xs text-beneficiary-dark">Serial number: <span className="font-bold">{savedSerial}</span> — write this on the beneficiary's physical FACED card copy.</p>
+            {!accountResult?.userId && !accountResult?.hasAccount && (
+              <button
+                type="button"
+                onClick={onOpenPending}
+                className="mt-2 text-xs font-bold text-beneficiary-dark underline"
+              >
+                Wala makahimo og login? Create the beneficiary account later →
+              </button>
+            )}
           </div>
         )}
         {status === 'error' && <p className="mt-3 text-xs font-semibold text-admin">Could not save the record — please try again.</p>}
@@ -1183,7 +1532,7 @@ function NewFamilyForm({ prefillSerial }) {
 export default function RecordDistributionTab() {
   const [searchParams, setSearchParams] = useSearchParams()
   const paramMode = searchParams.get('mode')
-  const mode = paramMode === 'new' || paramMode === 'existing' ? paramMode : null
+  const mode = paramMode === 'new' || paramMode === 'existing' || paramMode === 'pending' ? paramMode : null
 
   const [prefillSerial, setPrefillSerial] = useState('')
 
@@ -1220,7 +1569,15 @@ export default function RecordDistributionTab() {
         />
       )}
 
-      {mode === 'new' && <NewFamilyForm key={prefillSerial} prefillSerial={prefillSerial} />}
+      {mode === 'new' && (
+        <NewFamilyForm
+          key={prefillSerial}
+          prefillSerial={prefillSerial}
+          onOpenPending={() => selectMode('pending')}
+        />
+      )}
+
+      {mode === 'pending' && <PendingLoginFlow />}
     </>
   )
 }
