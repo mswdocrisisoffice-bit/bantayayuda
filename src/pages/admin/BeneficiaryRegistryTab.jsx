@@ -3,6 +3,10 @@ import Card from '../../components/ui/Card.jsx'
 import Avatar from '../../components/ui/Avatar.jsx'
 import PageBanner from '../../components/ui/PageBanner.jsx'
 import { supabase } from '../../lib/supabase.js'
+import {
+  loadReturnableDistributions,
+  returnDistributionsToInventory,
+} from '../../lib/inventoryReturns.js'
 
 const emptyMember = { name: '', relation: '', age: '', sex: '' }
 
@@ -250,6 +254,279 @@ function EditHouseholdRow({ household, onCancel, onSaved }) {
   )
 }
 
+function ArchiveHouseholdModal({ household, onClose, onArchived }) {
+  const [rows, setRows] = useState([])
+  const [trackingReady, setTrackingReady] = useState(true)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [returnStock, setReturnStock] = useState(false)
+  const [picked, setPicked] = useState({})
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    async function load() {
+      setLoading(true)
+      const result = await loadReturnableDistributions(household)
+      if (!alive) return
+      setRows(result.rows)
+      setTrackingReady(result.trackingReady)
+      setLoadError(result.error ? result.error.message : '')
+      setLoading(false)
+    }
+    load()
+    return () => {
+      alive = false
+    }
+  }, [household])
+
+  const selectedIds = useMemo(
+    () => rows.filter((row) => picked[row.id] !== false).map((row) => row.id),
+    [rows, picked]
+  )
+  const allSelected = rows.length > 0 && selectedIds.length === rows.length
+  const canReturn = trackingReady && rows.length > 0
+
+  function toggleAll() {
+    if (allSelected) {
+      const next = {}
+      rows.forEach((row) => {
+        next[row.id] = false
+      })
+      setPicked(next)
+    } else {
+      setPicked({})
+    }
+  }
+
+  function toggleRow(id) {
+    setPicked((current) => ({ ...current, [id]: current[id] === false }))
+  }
+
+  async function confirmArchive() {
+    if (busy) return
+    setError('')
+
+    if (returnStock && selectedIds.length === 0) {
+      setError('Select at least one item to return, or untick the return option.')
+      return
+    }
+
+    setBusy(true)
+
+    let returnResult = null
+    if (returnStock) {
+      returnResult = await returnDistributionsToInventory(selectedIds)
+      if (returnResult.error) {
+        setBusy(false)
+        setError(
+          returnResult.error.code === 'RETURN_FUNCTION_MISSING'
+            ? 'Stock return is not set up in the database yet. Run supabase/migrations/20261105_return_distribution_stock.sql in the Supabase SQL Editor, then try again.'
+            : `Could not return the items: ${returnResult.error.message}`
+        )
+        return
+      }
+    }
+
+    const { data: archived, error: archiveError } = await supabase
+      .from('beneficiaries')
+      .update({ status: 'archived', archived_at: new Date().toISOString() })
+      .eq('id', household.id)
+      .select('id')
+
+    setBusy(false)
+
+    if (archiveError || !archived || archived.length === 0) {
+      setError(
+        archiveError
+          ? `The household could not be archived: ${archiveError.message}`
+          : 'The household could not be archived. Check that your account still has admin access.'
+      )
+      return
+    }
+
+    onArchived(returnResult)
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={() => {
+        if (!busy) onClose()
+      }}
+    >
+      <div
+        className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-line-soft bg-white px-4 py-3.5 sm:px-5">
+          <div className="min-w-0">
+            <h2 className="text-base font-bold text-ink">Archive household</h2>
+            <p className="truncate text-xs text-faint">
+              {household.household_head}
+              {household.barangay ? ` · Brgy. ${household.barangay}` : ''}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            aria-label="Close"
+            className="shrink-0 rounded-lg px-2.5 py-1 text-sm font-semibold text-faint hover:bg-line-soft hover:text-ink disabled:opacity-50"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="space-y-3 p-4 sm:p-5">
+          <p className="text-xs leading-relaxed text-muted">
+            Archiving hides this household from the active registry. You can restore it later from
+            the Archive tab.
+          </p>
+
+          {loading && (
+            <p className="text-xs text-faint">Loading the household's distribution records…</p>
+          )}
+
+          {!loading && loadError && (
+            <p className="rounded-lg border border-warn-text bg-warn-bg px-3 py-2 text-xs font-semibold text-warn-text">
+              Could not load the distribution records: {loadError}
+            </p>
+          )}
+
+          {!loading && !loadError && !trackingReady && (
+            <div className="rounded-lg border border-warn-text bg-warn-bg px-3 py-2.5 text-xs text-warn-text">
+              <p className="font-bold">One-time database setup needed</p>
+              <p className="mt-1 leading-relaxed">
+                To return items to inventory, run{' '}
+                <span className="font-mono font-semibold">
+                  supabase/migrations/20261105_return_distribution_stock.sql
+                </span>{' '}
+                in the Supabase SQL Editor. You can still archive without returning stock.
+              </p>
+            </div>
+          )}
+
+          {!loading && !loadError && trackingReady && rows.length === 0 && (
+            <p className="rounded-lg border border-line-soft bg-line-soft/40 px-3 py-2.5 text-xs text-faint">
+              No active distribution records were found for this household. There is nothing to
+              return to inventory.
+            </p>
+          )}
+
+          {!loading && !loadError && canReturn && (
+            <div className="rounded-lg border border-line-soft p-3">
+              <label className="flex cursor-pointer items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={returnStock}
+                  onChange={(e) => {
+                    setReturnStock(e.target.checked)
+                    if (e.target.checked) setPicked({})
+                  }}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-admin"
+                />
+                <span className="min-w-0">
+                  <span className="block text-xs font-bold text-ink">
+                    Return the items given to this household to inventory
+                  </span>
+                  <span className="mt-0.5 block text-[11px] leading-relaxed text-faint">
+                    Stock goes back up by the quantity recorded for each selected distribution.
+                    Items with no matching inventory record are skipped and kept on record.
+                  </span>
+                </span>
+              </label>
+
+              {returnStock && (
+                <div className="mt-3 border-t border-line-soft pt-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
+                      {selectedIds.length} of {rows.length} selected
+                    </span>
+                    <button
+                      type="button"
+                      onClick={toggleAll}
+                      className="text-[11px] font-bold text-admin-dark hover:underline"
+                    >
+                      {allSelected ? 'Clear all' : 'Select all'}
+                    </button>
+                  </div>
+
+                  <div className="max-h-56 space-y-1.5 overflow-y-auto pr-0.5">
+                    {rows.map((row) => {
+                      const date = row.created_at
+                        ? new Date(row.created_at).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                          })
+                        : ''
+                      return (
+                        <label
+                          key={row.id}
+                          className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-line-soft px-2.5 py-2 hover:bg-line-soft/40"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={picked[row.id] !== false}
+                            onChange={() => toggleRow(row.id)}
+                            className="mt-0.5 h-4 w-4 shrink-0 accent-admin"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-xs font-semibold text-ink">{row.item}</span>
+                            <span className="block text-[11px] text-faint">
+                              {row.quantity} {row.unit || ''}
+                              {date ? ` · ${date}` : ''}
+                            </span>
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {error && (
+            <p className="rounded-lg border border-warn-text bg-warn-bg px-3 py-2 text-xs font-semibold text-warn-text">
+              {error}
+            </p>
+          )}
+
+          <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={busy}
+              className="rounded-lg px-3 py-2 text-xs font-semibold text-faint hover:text-ink disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmArchive}
+              disabled={busy || loading}
+              className="rounded-lg bg-admin px-4 py-2 text-xs font-bold text-white hover:bg-admin-dark disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {busy
+                ? returnStock
+                  ? 'Returning stock…'
+                  : 'Archiving…'
+                : returnStock
+                  ? 'Archive & return stock'
+                  : 'Archive household'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const FILTER_CHIPS = [
   { key: 'all', label: 'All' },
   { key: 'eligible', label: 'Eligible' },
@@ -265,7 +542,8 @@ export default function BeneficiaryRegistryTab() {
   const [loading, setLoading] = useState(true)
   const [editingId, setEditingId] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
-  const [busyId, setBusyId] = useState(null)
+  const [archiveTarget, setArchiveTarget] = useState(null)
+  const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
 
   async function load(showSpinner = false) {
@@ -283,19 +561,32 @@ export default function BeneficiaryRegistryTab() {
     load(true)
   }, [])
 
-  async function archiveHousehold(id) {
-    setBusyId(id)
-    setError('')
-    const { error: err } = await supabase
-      .from('beneficiaries')
-      .update({ status: 'archived', archived_at: new Date().toISOString() })
-      .eq('id', id)
-    setBusyId(null)
-    if (err) {
-      setError(`Could not archive: ${err.message}`)
-      return
-    }
+  function handleArchived(returnResult) {
+    const returned = Number(returnResult?.returned) || 0
+    const skipped = returnResult?.skipped?.length || 0
+
+    setArchiveTarget(null)
     setExpandedId(null)
+    setError('')
+
+    if (returnResult) {
+      setNotice(
+        [
+          'Household archived.',
+          returned
+            ? `${returned} distribution${returned === 1 ? '' : 's'} returned to inventory.`
+            : 'No stock was returned.',
+          skipped
+            ? `${skipped} item${skipped === 1 ? '' : 's'} could not be returned automatically and stayed on record.`
+            : '',
+        ]
+          .filter(Boolean)
+          .join(' ')
+      )
+    } else {
+      setNotice('Household archived. You can restore it later from the Archive tab.')
+    }
+
     load()
   }
 
@@ -419,6 +710,20 @@ export default function BeneficiaryRegistryTab() {
 
       {error && (
         <div className="mb-3 rounded-lg bg-warn-bg px-4 py-2.5 text-xs font-semibold text-warn-text">{error}</div>
+      )}
+
+      {notice && (
+        <div className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-beneficiary-dark bg-beneficiary-light px-4 py-2.5 text-xs font-semibold text-beneficiary-dark">
+          <span>{notice}</span>
+          <button
+            type="button"
+            onClick={() => setNotice('')}
+            aria-label="Dismiss"
+            className="shrink-0 text-beneficiary-dark/70 hover:text-beneficiary-dark"
+          >
+            ✕
+          </button>
+        </div>
       )}
 
       {loading && <p className="text-xs text-faint">Loading…</p>}
@@ -577,15 +882,13 @@ export default function BeneficiaryRegistryTab() {
                     </button>
                     <button
                       onClick={() => {
-                        if (confirm('Archive this household? It will be hidden from the active registry.')) {
-                          archiveHousehold(h.id)
-                        }
+                        setNotice('')
+                        setArchiveTarget(h)
                       }}
-                      disabled={busyId === h.id}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-admin px-3.5 py-2 text-[11px] font-bold text-white hover:bg-admin-dark disabled:opacity-50"
+                      className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-admin px-3.5 py-2 text-[11px] font-bold text-white hover:bg-admin-dark"
                     >
                       <Icon path={icons.archive} className="h-3.5 w-3.5" />
-                      {busyId === h.id ? 'Archiving…' : 'Archive'}
+                      Archive
                     </button>
                   </div>
                 </div>
@@ -599,8 +902,17 @@ export default function BeneficiaryRegistryTab() {
         "Recent aid · review" flags households that received aid within the last 30 days, based
         on a backend query against the distributions table. Check before recording a new entry
         to avoid duplicate aid. Archived households appear in the Archive tab and can be
-        restored from there.
+        restored from there. When archiving, you can choose to return the items they received
+        to inventory first.
       </p>
+
+      {archiveTarget && (
+        <ArchiveHouseholdModal
+          household={archiveTarget}
+          onClose={() => setArchiveTarget(null)}
+          onArchived={handleArchived}
+        />
+      )}
     </>
   )
 }

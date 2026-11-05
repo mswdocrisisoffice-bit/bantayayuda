@@ -70,6 +70,7 @@ create table distributions (
   quantity text,
   signature_path text,
   status text default 'confirmed',
+  stock_returned_at timestamptz,
   created_at timestamptz default now()
 );
 

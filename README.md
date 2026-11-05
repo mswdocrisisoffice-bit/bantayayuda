@@ -17,9 +17,12 @@ npm install
 2. Open **SQL Editor** in your Supabase dashboard, paste the contents of
    `supabase/schema.sql`, and run it. This creates all tables, RLS policies,
    and the `signatures` storage bucket.
-3. Go to **Project Settings → API** and copy your **Project URL** and
+3. Also run `supabase/migrations/20261105_return_distribution_stock.sql` in
+   the SQL Editor. This adds the database function used when returning a
+   household's items to inventory during beneficiary archiving.
+4. Go to **Project Settings → API** and copy your **Project URL** and
    **anon public key**.
-4. Copy `.env.example` to `.env` and fill in those two values:
+5. Copy `.env.example` to `.env` and fill in those two values:
 
 ```bash
 cp .env.example .env
