@@ -36,3 +36,108 @@ canvas {
   @apply w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#1d5fa8] focus:ring-2 focus:ring-[#1d5fa8]/20 disabled:bg-slate-50;
 }
 }
+
+/* ── Login pages: soft, slow-moving background blobs ── */
+@keyframes authBlobFloat {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33% { transform: translate3d(14px, -18px, 0) scale(1.07); }
+  66% { transform: translate3d(-10px, 12px, 0) scale(0.95); }
+}
+
+.auth-blob {
+  animation: authBlobFloat 16s ease-in-out infinite;
+  will-change: transform;
+}
+
+.auth-blob-delay {
+  animation-duration: 21s;
+  animation-delay: -8s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-blob {
+    animation: none;
+  }
+}
+
+/* ── Printing ──
+   Shared by every printable page. A page calls markPrintArea()/printArea()
+   from src/lib/print.js, which marks its ancestor chain with data-print-keep
+   and the surrounding UI with data-print-hide. */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .no-print,
+  [data-print-hide] {
+    display: none !important;
+  }
+
+  /* Flatten the wrappers around the print area so content flows across pages
+     instead of being clipped by flex/grid/overflow containers. */
+  [data-print-keep] {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    float: none !important;
+    width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    transform: none !important;
+    background: none !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  [data-print-area] {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+
+  [data-print-area] * {
+    box-shadow: none !important;
+    animation: none !important;
+    transition: none !important;
+  }
+
+  [data-print-area] a {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+
+  [data-print-area] tr,
+  [data-print-area] img,
+  [data-print-area] li {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  [data-print-area] h1,
+  [data-print-area] h2,
+  [data-print-area] h3 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+}

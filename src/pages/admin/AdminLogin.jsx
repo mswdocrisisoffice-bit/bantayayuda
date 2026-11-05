@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import Card from '../../components/ui/Card.jsx'
+import AuthLayout from '../../components/AuthLayout.jsx'
 import Button from '../../components/ui/Button.jsx'
 import { supabase } from '../../lib/supabase.js'
+
+const inputClass =
+  'w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none transition focus:border-admin focus:ring-2 focus:ring-admin/15'
 
 export default function AdminLogin() {
   const [email, setEmail] = useState('')
@@ -42,40 +45,51 @@ export default function AdminLogin() {
   }
 
   return (
-    <div className="flex min-h-screen items-start justify-center overflow-y-auto bg-cream px-4 py-8 sm:items-center sm:py-4">
-      <Card className="w-full max-w-sm border-2 border-admin-border p-6 sm:p-8">
-        <div className="mb-1 text-lg font-bold text-admin-dark">Administrator login</div>
-        <p className="mb-6 text-xs text-faint">DSWD / LGU staff access only</p>
-
-        <form onSubmit={handleSubmit} className="space-y-3">
+    <AuthLayout
+      role="admin"
+      title="Administrator login"
+      subtitle="DSWD / LGU staff access only"
+    >
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-muted">Staff email address</label>
           <input
             type="email"
             required
-            placeholder="Staff email address"
+            autoComplete="email"
+            placeholder="you@mswdo.gov.ph"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin"
+            className={inputClass}
           />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-muted">Password</label>
           <input
             type="password"
             required
+            autoComplete="current-password"
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-lg border border-line bg-white px-4 py-3 text-sm outline-none focus:border-admin"
+            className={inputClass}
           />
+        </div>
 
-          {error && <p className="text-xs font-semibold text-admin">{error}</p>}
+        {error && <p className="rounded-lg bg-admin-light px-3 py-2 text-xs font-semibold text-admin-dark">{error}</p>}
 
-          <Button type="submit" variant="admin" disabled={loading}>
-            {loading ? 'Please wait…' : 'Log in'}
-          </Button>
-        </form>
+        <Button type="submit" variant="admin" disabled={loading}>
+          {loading ? 'Please wait…' : 'Log in to workspace'}
+        </Button>
+      </form>
 
-        <Link to="/" className="mt-4 block text-center text-xs text-faint">
-          ← Back to home
-        </Link>
-      </Card>
-    </div>
+      <p className="mt-4 rounded-lg bg-line-soft/60 px-3 py-2 text-[11px] leading-relaxed text-faint">
+        Admin accounts are created by the MSWDO. If you need access, contact the system administrator.
+      </p>
+
+      <Link to="/" className="mt-4 block text-center text-xs text-faint sm:hidden">
+        ← Back to home
+      </Link>
+    </AuthLayout>
   )
 }

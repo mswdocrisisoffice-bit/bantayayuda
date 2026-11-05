@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import manoloFortichSeal from '../../assets/manolo-fortich-seal.png'
 import bagongPilipinasLogo from '../../assets/bagong-pilipinas-logo.png'
 import PageBanner from '../../components/ui/PageBanner.jsx'
+import { printArea, usePrintArea } from '../../lib/print.js'
 
 // ── Editable text block (locked template, editable content) ──
 function Editable({ value, onChange, className = '', as = 'div', placeholder = '' }) {
@@ -152,6 +153,10 @@ export default function ReportGenerator() {
   const [photos, setPhotos] = useState([null, null])
   const [preparedSig, setPreparedSig] = useState(null)
   const [certifiedSig, setCertifiedSig] = useState(null)
+  const printRef = useRef(null)
+
+  // Ctrl/Cmd+P prints only the report page.
+  usePrintArea(printRef)
 
   function set(field, value) {
     setR((prev) => ({ ...prev, [field]: value }))
@@ -168,41 +173,6 @@ export default function ReportGenerator() {
   return (
     <>
       <style>{`
-        @media print {
-          /* A4 paper with a normal margin on every page */
-          @page { size: A4; margin: 14mm 16mm; }
-
-          html, body, #root {
-            height: auto !important;
-            overflow: visible !important;
-            background: #fff !important;
-          }
-
-          /* Print ONLY the letterhead report: hide the system's top bar, sidebar and background */
-          body * { visibility: hidden !important; }
-          .print-page, .print-page * { visibility: visible !important; }
-
-          .print-page {
-            position: absolute !important;
-            left: 0;
-            top: 0;
-            width: 100% !important;
-            max-width: none !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            box-shadow: none !important;
-          }
-
-          .no-print { display: none !important; }
-
-          /* Keep lists, photos and signature blocks from splitting across pages */
-          .print-page li,
-          .print-page img,
-          .avoid-break {
-            break-inside: avoid;
-            page-break-inside: avoid;
-          }
-        }
         .editable-field:empty:before {
           content: attr(data-placeholder);
           color: #aaa;
@@ -224,7 +194,7 @@ export default function ReportGenerator() {
           className="mb-4"
         >
           <button
-            onClick={() => window.print()}
+            onClick={() => printArea(printRef.current)}
             className="rounded-lg bg-white px-5 py-2 text-sm font-bold text-admin-dark shadow transition hover:bg-white/90"
           >
             Print / Save as PDF
@@ -233,7 +203,7 @@ export default function ReportGenerator() {
       </div>
 
       {/* ── Printable page ── */}
-      <div className="print-page mx-auto w-full max-w-[850px] bg-white p-4 text-[13px] leading-snug text-black shadow-lg sm:p-8 md:p-10">
+      <div ref={printRef} className="print-page mx-auto w-full max-w-[850px] bg-white p-4 text-[13px] leading-snug text-black shadow-lg sm:p-8 md:p-10">
         {/* Header */}
         <div className="mb-4 flex items-center justify-between border-b-2 border-black pb-3">
           <img src={manoloFortichSeal} alt="Manolo Fortich official seal" className="w-16" />

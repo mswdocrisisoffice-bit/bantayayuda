@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Card from '../../components/ui/Card.jsx'
 import PageBanner from '../../components/ui/PageBanner.jsx'
+import { printArea, usePrintArea } from '../../lib/print.js'
 import { supabase } from '../../lib/supabase.js'
 import manoloFortichSeal from '../../assets/manolo-fortich-seal.png'
 import bagongPilipinasLogo from '../../assets/bagong-pilipinas-logo.png'
@@ -234,6 +235,10 @@ export default function RisTab() {
   const [toast, setToast] = useState(null)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
+  const printRef = useRef(null)
+
+  // Ctrl/Cmd+P prints only the RIS sheet while the print view is open.
+  usePrintArea(printRef)
 
   function notify(type, text) {
     setToast({ type, text })
@@ -258,13 +263,6 @@ export default function RisTab() {
   }
 
   useEffect(() => { load() }, [])
-
-  // Print only the RIS sheet: the rest of the admin screen is hidden while printing
-  useEffect(() => {
-    if (view !== 'print') return undefined
-    document.body.classList.add('ris-printing')
-    return () => document.body.classList.remove('ris-printing')
-  }, [view])
 
   const invById = useMemo(
     () => Object.fromEntries(inventory.map((i) => [String(i.id), i])),
@@ -463,17 +461,12 @@ export default function RisTab() {
   const printStyles = `
     .ris-spacer { height: 0; }
     @media print {
+      /* The RIS uses its own page margins: the 10mm spacers let the letterhead
+         repeat cleanly and keep the official form inside the paper edge. */
       @page { size: A4; margin: 0; }
-      html, body, #root { height: auto !important; overflow: visible !important; background: #fff !important; }
-      body.ris-printing * { visibility: hidden !important; }
-      body.ris-printing .ris-print-page, body.ris-printing .ris-print-page * { visibility: visible !important; }
-      body.ris-printing .ris-print-page {
-        position: absolute !important; left: 0; top: 0; width: 100% !important; max-width: none !important;
-        margin: 0 !important; box-shadow: none !important;
-      }
-      .ris-spacer { height: 10mm; }
+      .ris-spacer { height: 10mm !important; }
       .ris-body { padding: 0 12mm !important; }
-      .no-print { display: none !important; }
+      .ris-print-page { min-width: 0 !important; background: #fff !important; }
       .ris-print-page tr, .ris-print-page img { break-inside: avoid; page-break-inside: avoid; }
     }
   `
@@ -513,7 +506,7 @@ export default function RisTab() {
               </button>
             )}
             <button
-              onClick={() => window.print()}
+              onClick={() => printArea(printRef.current)}
               className="inline-flex items-center gap-2 rounded-lg bg-admin px-4 py-2 text-xs font-bold text-white shadow transition hover:-translate-y-0.5 hover:bg-admin-dark"
             >
               <Icon path={icons.print} /> Print / Save as PDF
@@ -527,8 +520,10 @@ export default function RisTab() {
         )}
         {/* The official RIS is a wide form. On a phone it scrolls sideways
             instead of being squeezed until the columns are unreadable. */}
-        <div className="-mx-3 overflow-x-auto px-3 pb-3 sm:mx-0 sm:px-0">
-          <RisSheet ris={current} />
+        <div ref={printRef}>
+          <div className="-mx-3 overflow-x-auto px-3 pb-3 sm:mx-0 sm:px-0">
+            <RisSheet ris={current} />
+          </div>
         </div>
       </>
     )

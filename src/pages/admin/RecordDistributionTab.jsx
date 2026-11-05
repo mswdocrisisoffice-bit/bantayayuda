@@ -938,7 +938,56 @@ function NewFamilyForm({ prefillSerial }) {
         <div className="mb-2 flex justify-end">
           <button onClick={addMemberRow} className="text-xs font-semibold text-admin-dark hover:underline">+ Add member</button>
         </div>
-        <div className="overflow-x-auto border border-line-soft">
+        <div className="space-y-3 sm:hidden">
+          {familyMembers.map((m, i) => (
+            <div key={i} className="rounded-lg border border-line-soft bg-white p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-[11px] font-bold text-muted">Member {i + 1}</span>
+                {familyMembers.length > 1 && (
+                  <button type="button" onClick={() => removeMemberRow(i)} className="text-[11px] font-semibold text-admin hover:underline">
+                    Remove ✕
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="col-span-2 block">
+                  <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-faint">Family member</span>
+                  <input className={inputClass} value={m.name} onChange={(e) => updateMember(i, 'name', e.target.value)} />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-faint">Relation</span>
+                  <input className={inputClass} value={m.relation} onChange={(e) => updateMember(i, 'relation', e.target.value)} />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-faint">Birthdate</span>
+                  <input type="date" className={inputClass} value={m.birthdate} onChange={(e) => updateMember(i, 'birthdate', e.target.value)} />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-faint">Age</span>
+                  <input className={inputClass} value={m.age} onChange={(e) => updateMember(i, 'age', e.target.value)} />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-faint">Sex</span>
+                  <input className={inputClass} value={m.sex} onChange={(e) => updateMember(i, 'sex', e.target.value)} />
+                </label>
+                <label className="col-span-2 block">
+                  <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-faint">Highest educ. attainment</span>
+                  <input className={inputClass} value={m.education} onChange={(e) => updateMember(i, 'education', e.target.value)} />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-faint">Occupation</span>
+                  <input className={inputClass} value={m.occupation} onChange={(e) => updateMember(i, 'occupation', e.target.value)} />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-faint">Remarks</span>
+                  <input className={inputClass} value={m.remarks} onChange={(e) => updateMember(i, 'remarks', e.target.value)} />
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="hidden overflow-x-auto border border-line-soft sm:block">
           <table className="w-full min-w-[700px] border-collapse text-xs">
             <thead>
               <tr className="bg-line-soft text-left text-ink">
@@ -992,7 +1041,7 @@ function NewFamilyForm({ prefillSerial }) {
             <div className="-mx-3 -mt-3 mb-3 bg-navy px-3 py-1.5">
               <h2 className="text-xs font-bold uppercase tracking-wide text-white">27. House ownership</h2>
             </div>
-            <div className="flex gap-4 text-xs text-muted">
+            <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted">
               {['Owner', 'Renter', 'Sharer'].map((opt) => (
                 <label key={opt} className="flex items-center gap-1.5">
                   <input type="radio" name="houseOwnership" checked={form.houseOwnership === opt} onChange={() => update('houseOwnership', opt)} />
@@ -1005,7 +1054,7 @@ function NewFamilyForm({ prefillSerial }) {
             <div className="-mx-3 -mt-3 mb-3 bg-navy px-3 py-1.5">
               <h2 className="text-xs font-bold uppercase tracking-wide text-white">28. Shelter damage classification</h2>
             </div>
-            <div className="flex gap-4 text-xs text-muted">
+            <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted">
               {['Partially Damaged', 'Totally Damaged'].map((opt) => (
                 <label key={opt} className="flex items-center gap-1.5">
                   <input type="radio" name="shelterDamage" checked={form.shelterDamage === opt} onChange={() => update('shelterDamage', opt)} />

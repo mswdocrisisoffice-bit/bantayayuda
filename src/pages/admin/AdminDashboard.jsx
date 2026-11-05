@@ -78,7 +78,7 @@ export function AdminTabs({ collapsed, setCollapsed, mobileOpen, setMobileOpen }
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-navy text-white transition-all duration-200 lg:sticky lg:top-0 lg:h-screen
+        className={`no-print fixed inset-y-0 left-0 z-50 flex flex-col bg-navy text-white transition-all duration-200 lg:sticky lg:top-0 lg:h-screen
           w-64 ${collapsed ? 'lg:w-[72px]' : 'lg:w-64'}
           ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
       >

@@ -30,7 +30,7 @@ export default function AdminLayout() {
   return (
     <div className="relative min-h-screen">
       <div
-        className="fixed inset-0 -z-10 bg-center bg-no-repeat"
+        className="no-print fixed inset-0 -z-10 bg-center bg-no-repeat"
         style={{
           backgroundImage: `url(${manoloBg})`,
           backgroundSize: 'cover',
@@ -38,7 +38,7 @@ export default function AdminLayout() {
         }}
       />
       <div
-        className="fixed inset-0 -z-10"
+        className="no-print fixed inset-0 -z-10"
         style={{ backgroundColor: 'rgba(198, 198, 189, 0.77)' }}
       />
 
