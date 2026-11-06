@@ -953,16 +953,34 @@ export default function DonationsTab() {
 
     setStatus(error ? 'error' : queued ? 'queued' : 'success')
     if (!error) {
-      // Keep any non-built-in category (and its item) for next time. The donation is already saved,
+      // Keep newly typed categories AND items for next time. A new item can be
+      // added under a built-in category too (via "Other (specify)"), so don't
+      // limit this to custom categories only. The donation is already saved,
       // so a failure here never blocks it.
-      const isCustom = !Object.prototype.hasOwnProperty.call(CATEGORIES, finalCategory)
-      if (isCustom && !queued) {
+      const isBrandNewCategory =
+        isNewCategory &&
+        !Object.keys(allCategories).some((c) => c.toLowerCase() === finalCategory.toLowerCase())
+      const knownItems = allCategories[finalCategory] || []
+      const isNewItem =
+        Boolean(finalItem) &&
+        !knownItems.some((name) => name.toLowerCase() === finalItem.toLowerCase())
+      const shouldPersist = !queued && (isBrandNewCategory || isNewItem)
+
+      if (shouldPersist) {
         const ok = await saveCustomCategory(finalCategory, finalItem, form.unit)
         if (ok) {
           await reloadCategories()
-          if (isNewCategory) setSavedNote(`"${finalCategory}" was added as a new category.`)
+          setSavedNote(
+            isBrandNewCategory
+              ? `"${finalCategory}" was added as a new category.`
+              : `"${finalItem}" was added to ${finalCategory}.`
+          )
         } else {
-          setSavedNote('Donation saved, but the new category could not be stored for future use.')
+          setSavedNote(
+            isBrandNewCategory
+              ? 'Donation saved, but the new category could not be stored for future use.'
+              : 'Donation saved, but the new item could not be stored for future use.'
+          )
         }
       }
 
