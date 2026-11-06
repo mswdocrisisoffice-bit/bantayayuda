@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
+import { useCallback, useEffect, useState } from 'react'
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from '../../lib/supabase.js'
+import ManoloFortichBoundary from './ManoloFortichBoundary.jsx'
+import { MANOLO_FORTICH_BOUNDS_ARRAY } from '../../lib/manoloFortich.js'
 
 // Official coordinates for all 22 barangays of Manolo Fortich, Bukidnon
 // Source: PhilAtlas / PSA barangay profiles
@@ -31,48 +33,91 @@ export const BARANGAY_POSITIONS = [
   { name: 'Ticala', lat: 8.3412, lng: 124.8911 },
 ]
 
-// Small lat/lng offset so a donor pin sits diagonally above-right of the
-// recipient pin in the same barangay, instead of overlapping it.
-const DONOR_OFFSET_LAT = 0.006
-const DONOR_OFFSET_LNG = 0.009
+const DONOR_COLOR = '#2563A8'
+
+const STATUS_COLORS = {
+  none: '#888780',
+  hasDonations: '#639922',
+  partial: '#E8A33D',
+  full: '#4A7A2E',
+}
+
+const iconCache = new Map()
 
 // Icons are wrapped in a larger invisible box so the tappable area is
 // bigger than the visible dot — much easier to hit on a phone screen.
-function makeCircleIcon(color) {
-  return L.divIcon({
+function makeCircleIcon(color, { muted = false } = {}) {
+  const key = `circle:${color}:${muted}`
+  if (iconCache.has(key)) return iconCache.get(key)
+
+  const size = muted ? 12 : 20
+  const icon = L.divIcon({
     className: '',
     html: `<div style="
-      width: 40px; height: 40px; display:flex; align-items:center; justify-content:center;
+      width: 44px; height: 44px; display:flex; align-items:center; justify-content:center;
     ">
       <div style="
-        width: 22px; height: 22px; border-radius: 50%;
+        width: ${size}px; height: ${size}px; border-radius: 50%;
         background:${color}; border:3px solid white;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+        box-shadow: 0 1px 5px rgba(15,23,42,0.35), 0 0 0 1px rgba(15,23,42,0.08);
       "></div>
     </div>`,
-    iconSize: [40, 40],
-    iconAnchor: [20, 20],
+    iconSize: [44, 44],
+    iconAnchor: [22, 22],
+    popupAnchor: [0, -15],
   })
+  iconCache.set(key, icon)
+  return icon
 }
 
-function makeDiamondIcon(color) {
-  return L.divIcon({
-    className: '',
-    html: `<div style="
-      width: 40px; height: 40px; display:flex; align-items:center; justify-content:center;
-    ">
+// The donor diamond is painted in the top-right of the same 44px box as the
+// recipient dot. Both markers therefore share one coordinate, so a donation is
+// never shown floating over a neighbouring barangay when you zoom in.
+function makeDonorIcon() {
+  if (iconCache.has('donor')) return iconCache.get('donor')
+
+  const icon = L.divIcon({
+    className: 'map-donor-pin',
+    html: `<div style="width:44px;height:44px;position:relative;">
       <div style="
-        width: 17px; height: 17px; background:${color};
-        border:3px solid white; transform: rotate(45deg);
-        box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+        position:absolute; left:25px; top:3px; width:15px; height:15px;
+        background:${DONOR_COLOR}; border:3px solid white; transform: rotate(45deg);
+        box-shadow: 0 1px 5px rgba(15,23,42,0.35); pointer-events:auto;
       "></div>
     </div>`,
-    iconSize: [40, 40],
-    iconAnchor: [20, 20],
+    iconSize: [44, 44],
+    iconAnchor: [22, 22],
+    popupAnchor: [12, -12],
   })
+  iconCache.set('donor', icon)
+  return icon
 }
 
-const DONOR_COLOR = '#2563A8'
+// Keeps track of the current zoom level so labels can be revealed as the user
+// zooms in. At the fitted view (zoom 10) the 22 barangays sit too close together
+// for every name to be readable, so only barangays with activity are labelled.
+function ZoomTracker({ onZoom }) {
+  const map = useMapEvents({
+    zoomend() {
+      onZoom(map.getZoom())
+    },
+  })
+
+  useEffect(() => {
+    onZoom(map.getZoom())
+  }, [map, onZoom])
+
+  return null
+}
+
+function StatusDot({ color, shape = 'circle' }) {
+  return (
+    <span
+      className={shape === 'diamond' ? 'inline-block h-2.5 w-2.5 rotate-45' : 'inline-block h-2.5 w-2.5 rounded-full'}
+      style={{ background: color }}
+    />
+  )
+}
 
 export default function BarangayMap({ height = '320px' }) {
   const [statsByBarangay, setStatsByBarangay] = useState({})
@@ -80,6 +125,10 @@ export default function BarangayMap({ height = '320px' }) {
   const [loading, setLoading] = useState(true)
   const [showDonors, setShowDonors] = useState(true)
   const [showRecipients, setShowRecipients] = useState(true)
+  const [showNames, setShowNames] = useState(true)
+  const [zoom, setZoom] = useState(0)
+
+  const handleZoom = useCallback((nextZoom) => setZoom(nextZoom), [])
 
   useEffect(() => {
     async function load() {
@@ -158,24 +207,42 @@ export default function BarangayMap({ height = '320px' }) {
     // `isolate` keeps Leaflet's internal z-indexes (panes 400, controls 1000) inside this box,
     // so the map can never paint on top of the PIN lock screen or other overlays.
     <div className="relative z-0 isolate">
-      <div className="mb-2 flex flex-wrap gap-4 text-xs font-semibold text-muted">
+      <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-semibold text-muted">
         <label className="flex items-center gap-1.5">
           <input type="checkbox" checked={showDonors} onChange={(e) => setShowDonors(e.target.checked)} />
-          <span className="inline-block h-2.5 w-2.5" style={{ background: DONOR_COLOR, transform: 'rotate(45deg)' }} />
+          <StatusDot color={DONOR_COLOR} shape="diamond" />
           Donor locations
         </label>
         <label className="flex items-center gap-1.5">
           <input type="checkbox" checked={showRecipients} onChange={(e) => setShowRecipients(e.target.checked)} />
-          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: '#4A7A2E' }} />
+          <StatusDot color={STATUS_COLORS.hasDonations} />
           Recipient / aid progress
         </label>
+        <label className="flex items-center gap-1.5">
+          <input type="checkbox" checked={showNames} onChange={(e) => setShowNames(e.target.checked)} />
+          Barangay names
+        </label>
+        {showNames && zoom < 11 && (
+          <span className="text-[10px] font-normal text-faint">Zoom in for all names</span>
+        )}
       </div>
 
-      <div style={{ height, width: '100%' }} className="overflow-hidden rounded-lg border border-line">
+      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-faint">
+        <span className="flex items-center gap-1"><StatusDot color={STATUS_COLORS.none} /> No activity</span>
+        <span className="flex items-center gap-1"><StatusDot color={STATUS_COLORS.hasDonations} /> Has donations</span>
+        <span className="flex items-center gap-1"><StatusDot color={STATUS_COLORS.partial} /> Partially served</span>
+        <span className="flex items-center gap-1"><StatusDot color={STATUS_COLORS.full} /> Fully served</span>
+      </div>
+
+      <div style={{ height, width: '100%' }} className="relative overflow-hidden rounded-lg border border-line">
         <MapContainer
-          center={[8.3697, 124.8644]}
-          zoom={12}
-          style={{ height: '100%', width: '100%' }}
+          bounds={MANOLO_FORTICH_BOUNDS_ARRAY}
+          boundsOptions={{ padding: [12, 12] }}
+          maxBounds={MANOLO_FORTICH_BOUNDS_ARRAY}
+          maxBoundsViscosity={1.0}
+          minZoom={10}
+          maxZoom={16}
+          style={{ height: '100%', width: '100%', background: '#e6edf5' }}
           scrollWheelZoom={false}
           tap={true}
           tapTolerance={30}
@@ -185,21 +252,37 @@ export default function BarangayMap({ height = '320px' }) {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
 
-          {showRecipients && BARANGAY_POSITIONS.map((b) => {
+          <ManoloFortichBoundary />
+          <ZoomTracker onZoom={handleZoom} />
+
+          {showRecipients && BARANGAY_POSITIONS.map((b, index) => {
             const s = statsByBarangay[b.name.toLowerCase()]
             const householdsServed = s?.householdsServedSet?.size || 0
             const households = s?.households || 0
-            const hasDonations = s && s.donationCount > 0
+            const hasDonations = (s?.donationCount || 0) > 0
             const fullyServed = households > 0 && householdsServed >= households
             const partiallyServed = householdsServed > 0 && !fullyServed
 
-            let color = '#888780' // gray — no activity yet
-            if (fullyServed) color = '#4A7A2E' // dark green — fully served
-            else if (partiallyServed) color = '#E8A33D' // amber — partially served
-            else if (hasDonations) color = '#639922' // light green — has donations, no distribution yet
+            let color = STATUS_COLORS.none
+            if (fullyServed) color = STATUS_COLORS.full
+            else if (partiallyServed) color = STATUS_COLORS.partial
+            else if (hasDonations) color = STATUS_COLORS.hasDonations
+
+            // Alternate above/below so neighbouring barangay names do not
+            // stack on top of each other. At the fitted zoom only barangays
+            // with activity are labelled; zooming in reveals the rest. Names
+            // can be hidden entirely from the control above the map.
+            const labelAbove = index % 2 === 0
+            const hasActivity = (s?.donationCount || 0) > 0 || households > 0 || (s?.distributedCount || 0) > 0
+            const showLabel = showNames && (hasActivity || zoom >= 11)
 
             return (
-              <Marker key={`recipient-${b.name}`} position={[b.lat, b.lng]} icon={makeCircleIcon(color)}>
+              <Marker
+                key={`recipient-${b.name}`}
+                position={[b.lat, b.lng]}
+                icon={makeCircleIcon(color, { muted: color === STATUS_COLORS.none })}
+                title={`Brgy. ${b.name}`}
+              >
                 <Popup>
                   <div style={{ fontSize: '12px', minWidth: '190px' }}>
                     <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Brgy. {b.name} — Recipients</div>
@@ -222,6 +305,18 @@ export default function BarangayMap({ height = '320px' }) {
                     )}
                   </div>
                 </Popup>
+
+                {showLabel && (
+                  <Tooltip
+                    permanent
+                    direction={labelAbove ? 'top' : 'bottom'}
+                    offset={[0, labelAbove ? -10 : 10]}
+                    opacity={1}
+                    className="map-barangay-label"
+                  >
+                    {b.name}
+                  </Tooltip>
+                )}
               </Marker>
             )
           })}
@@ -233,8 +328,9 @@ export default function BarangayMap({ height = '320px' }) {
             return (
               <Marker
                 key={`donor-${b.name}`}
-                position={[b.lat + DONOR_OFFSET_LAT, b.lng + DONOR_OFFSET_LNG]}
-                icon={makeDiamondIcon(DONOR_COLOR)}
+                position={[b.lat, b.lng]}
+                icon={makeDonorIcon()}
+                title={`Donors — Brgy. ${b.name}`}
               >
                 <Popup>
                   <div style={{ fontSize: '12px', minWidth: '210px' }}>
@@ -263,10 +359,18 @@ export default function BarangayMap({ height = '320px' }) {
                     )}
                   </div>
                 </Popup>
+
+                <Tooltip direction="right" offset={[14, -10]} className="map-barangay-label map-barangay-label-donor">
+                  Donors · {b.name}
+                </Tooltip>
               </Marker>
             )
           })}
         </MapContainer>
+
+        <div className="pointer-events-none absolute right-2 top-2 z-[500] rounded-md bg-white/90 px-2 py-1 text-[10px] font-bold text-ink shadow-sm ring-1 ring-black/5">
+          Manolo Fortich only
+        </div>
       </div>
     </div>
   )

@@ -651,12 +651,6 @@ export default function AdminDashboard() {
           Barangay aid map — Manolo Fortich, Bukidnon
         </div>
         <BarangayMap key={mapKey} height="280px" />
-        <div className="mt-2 flex flex-wrap gap-3 text-[10px] text-faint">
-          <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: '#888780' }} /> No activity</span>
-          <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: '#639922' }} /> Has donations</span>
-          <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: '#E8A33D' }} /> Partially served</span>
-          <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: '#4A7A2E' }} /> Fully served</span>
-        </div>
         <p className="mt-2 text-[11px] text-faint">Tap a pin to see registered households, donations, and how many households have received aid so far.</p>
       </Card>
     </>

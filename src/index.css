@@ -60,6 +60,41 @@ canvas {
   }
 }
 
+/* ── Leaflet maps ──
+   Barangay labels stay small and quiet so the pins remain the focus. */
+.leaflet-container {
+  font-family: inherit;
+}
+
+.map-barangay-label {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.16) !important;
+  color: #1f2937 !important;
+  font-size: 9px !important;
+  font-weight: 700 !important;
+  line-height: 1.2 !important;
+  padding: 1px 4px !important;
+  white-space: nowrap !important;
+}
+
+.map-barangay-label::before {
+  display: none !important;
+}
+
+.map-barangay-label-donor {
+  background: #eef4fb !important;
+  border-color: rgba(37, 99, 168, 0.35) !important;
+  color: #1d4f8a !important;
+}
+
+/* The donor diamond shares its coordinate with the recipient dot. Only the
+   diamond itself should capture taps, so the recipient marker stays reachable. */
+.leaflet-marker-icon.map-donor-pin {
+  pointer-events: none;
+}
+
 /* ── Printing ──
    Shared by every printable page. A page calls markPrintArea()/printArea()
    from src/lib/print.js, which marks its ancestor chain with data-print-keep
