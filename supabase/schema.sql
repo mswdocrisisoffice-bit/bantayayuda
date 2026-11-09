@@ -72,6 +72,7 @@ create table distributions (
   status text default 'confirmed',
   stock_returned_at timestamptz,
   stock_returned_for uuid,
+  archived_at timestamptz,
   created_at timestamptz default now()
 );
 
@@ -114,6 +115,8 @@ create policy "beneficiary inserts own household" on beneficiaries
   for insert with check (auth.uid() = id);
 create policy "admin manages beneficiaries" on beneficiaries
   for update using (public.is_admin());
+create policy "admin deletes beneficiaries" on beneficiaries
+  for delete using (public.is_admin());
 
 -- Donations: donor reads their own; public can read non-private confirmed
 -- entries (for the landing page feed); admin has full access
@@ -125,18 +128,64 @@ create policy "admin inserts donations" on donations
   for insert with check (public.is_admin());
 create policy "admin updates donations" on donations
   for update using (public.is_admin());
+create policy "admin deletes donations" on donations
+  for delete using (public.is_admin());
 
 -- Distributions: household reads their own; admin full access
 create policy "household reads own distributions" on distributions
   for select using (auth.uid() = household_id or public.is_admin());
 create policy "admin inserts distributions" on distributions
   for insert with check (public.is_admin());
+create policy "admin deletes distributions" on distributions
+  for delete using (public.is_admin());
 
 -- Donation flags: donor can add/read their own flags on their own donations; admin reads all
 create policy "donor inserts own flags" on donation_flags
   for insert with check (auth.uid() = donor_id);
 create policy "donor reads own flags" on donation_flags
   for select using (auth.uid() = donor_id or public.is_admin());
+create policy "admin deletes donation_flags" on donation_flags
+  for delete using (public.is_admin());
+
+-- Admin-only helper used by the Archive tab. Clears references that would block
+-- a permanent delete while keeping historical distribution rows intact.
+create or replace function public.delete_archived_record(p_type text, p_id uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_deleted integer := 0;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can permanently delete archived records.';
+  end if;
+
+  case p_type
+    when 'distribution' then
+      delete from public.distributions where id = p_id;
+      get diagnostics v_deleted = row_count;
+    when 'donation' then
+      update public.distributions set donation_id = null where donation_id = p_id;
+      delete from public.donations where id = p_id;
+      get diagnostics v_deleted = row_count;
+    when 'household' then
+      update public.distributions set household_id = null where household_id = p_id;
+      delete from public.beneficiaries where id = p_id;
+      get diagnostics v_deleted = row_count;
+    when 'comment' then
+      delete from public.donation_flags where id = p_id;
+      get diagnostics v_deleted = row_count;
+    else
+      raise exception 'Unknown archive type: %', p_type;
+  end case;
+
+  return v_deleted;
+end;
+$$;
+
+grant execute on function public.delete_archived_record(text, uuid) to authenticated;
 
 -- ─────────────────────────────────────────────
 -- 6. Storage bucket for e-signatures

@@ -64,6 +64,7 @@ const icons = {
   map: <><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z" /><path d="M9 4v14M15 6v14" /></>,
   chat: <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />,
   idcard: <><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="11" r="2" /><path d="M6 16c0-1.7 1.3-3 3-3s3 1.3 3 3M14 10h4M14 14h4" /></>,
+  archive: <><rect x="2.5" y="4" width="19" height="4.5" rx="1" /><path d="M4 8.5V19a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V8.5" /><path d="M10 12.5h4" /></>,
 }
 
 /* Numbers count up when they change: a small dynamic effect for the summary cards */
@@ -369,7 +370,10 @@ function EditDistributionRow({ dist, onCancel, onSaved }) {
 }
 
 /* ── One distribution record, shown inside its beneficiary card ── */
-function DistributionRow({ dist, isOpen, onToggle, isEditing, onEdit, onCancelEdit, onSaved }) {
+function DistributionRow({
+  dist, isOpen, onToggle, isEditing, onEdit, onCancelEdit, onSaved,
+  onArchive, archiving,
+}) {
   if (isEditing) {
     return <EditDistributionRow dist={dist} onCancel={onCancelEdit} onSaved={onSaved} />
   }
@@ -411,12 +415,22 @@ function DistributionRow({ dist, isOpen, onToggle, isEditing, onEdit, onCancelEd
             <div><span className="text-faint">Status:</span> {dist.status || '—'}</div>
             <div><span className="text-faint">Recorded:</span> {formatDateTime(dist.created_at)}</div>
           </div>
-          <button
-            onClick={onEdit}
-            className="no-print mt-3 rounded-lg bg-line-soft px-3 py-1.5 text-[11px] font-semibold text-ink hover:bg-line"
-          >
-            Edit this record
-          </button>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              onClick={onEdit}
+              className="no-print rounded-lg bg-line-soft px-3 py-1.5 text-[11px] font-semibold text-ink hover:bg-line"
+            >
+              Edit this record
+            </button>
+            <button
+              onClick={() => onArchive?.(dist)}
+              disabled={archiving}
+              className="no-print inline-flex items-center gap-1.5 rounded-lg border border-admin/40 bg-white px-3 py-1.5 text-[11px] font-semibold text-admin-dark hover:bg-admin-light disabled:opacity-50"
+            >
+              <Icon path={icons.archive} className="h-3.5 w-3.5" />
+              {archiving ? 'Archiving…' : 'Archive this record'}
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -427,6 +441,7 @@ function DistributionRow({ dist, isOpen, onToggle, isEditing, onEdit, onCancelEd
 function BeneficiarySection({
   group, isOpen, onToggleSection,
   openDistId, setOpenDistId, editingDistId, setEditingDistId, onSaved,
+  onArchiveRecord, onArchiveGroup, archiveBusy,
 }) {
   const categories = useMemo(() => {
     return [...new Set(group.items.map((d) => d.category || 'Uncategorized'))]
@@ -478,6 +493,19 @@ function BeneficiarySection({
 
       {isOpen && (
         <div className="space-y-2 border-t border-line-soft bg-line-soft/30 p-4">
+          <div className="no-print flex flex-wrap items-center justify-between gap-2 pb-1">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
+              {group.items.length} distribution record{group.items.length === 1 ? '' : 's'}
+            </span>
+            <button
+              onClick={() => onArchiveGroup?.(group)}
+              disabled={archiveBusy === `group-${group.key}`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-admin/40 bg-white px-3 py-1.5 text-[11px] font-bold text-admin-dark hover:bg-admin-light disabled:opacity-50"
+            >
+              <Icon path={icons.archive} className="h-3.5 w-3.5" />
+              {archiveBusy === `group-${group.key}` ? 'Archiving…' : 'Archive all records'}
+            </button>
+          </div>
           {group.items.map((d) => (
             <DistributionRow
               key={d.id}
@@ -488,6 +516,8 @@ function BeneficiarySection({
               onEdit={() => setEditingDistId(d.id)}
               onCancelEdit={() => setEditingDistId(null)}
               onSaved={onSaved}
+              onArchive={onArchiveRecord}
+              archiving={archiveBusy === `record-${d.id}`}
             />
           ))}
         </div>
@@ -727,6 +757,9 @@ export default function ReportsTab() {
   const [flags, setFlags] = useState([])
   const [loading, setLoading] = useState(true)
   const [busyFlagId, setBusyFlagId] = useState(null)
+  const [archiveBusy, setArchiveBusy] = useState(null) // `record-<id>` | `group-<key>`
+  const [archiveNotice, setArchiveNotice] = useState('')
+  const [archiveError, setArchiveError] = useState('')
   const [openDistId, setOpenDistId] = useState(null)
   const [editingDistId, setEditingDistId] = useState(null)
   const [openBeneficiaries, setOpenBeneficiaries] = useState({})
@@ -756,7 +789,8 @@ export default function ReportsTab() {
         .order('created_at', { ascending: false }),
     ])
     setDonations(donationsRes.data || [])
-    setDistributions(distributionsRes.data || [])
+    // Archived distribution records belong in the Archive tab, not in the live report.
+    setDistributions((distributionsRes.data || []).filter((d) => !d.archived_at))
     setInventory(inventoryRes.data || [])
     setDonors(donorsRes.data || [])
     setFlags(flagsRes.data || [])
@@ -775,6 +809,79 @@ export default function ReportsTab() {
       .eq('id', id)
     setBusyFlagId(null)
     if (!error) loadAll()
+  }
+
+  function flashArchive(msg) {
+    setArchiveNotice(msg)
+    setTimeout(() => setArchiveNotice(''), 3200)
+  }
+
+  async function archiveRecords(records, busyKey, successMessage) {
+    if (!records?.length) return
+    setArchiveBusy(busyKey)
+    setArchiveError('')
+    const ids = records.map((r) => r.id)
+    const { data, error } = await supabase
+      .from('distributions')
+      .update({ archived_at: new Date().toISOString() })
+      .in('id', ids)
+      .select('id')
+    setArchiveBusy(null)
+
+    if (error || !data || data.length === 0) {
+      if (error && (error.code === '42703' || /archived_at/i.test(error.message || ''))) {
+        setArchiveError(
+          'Archiving distributions is not set up in the database yet. Run this once in the Supabase SQL Editor: ' +
+            'alter table public.distributions add column if not exists archived_at timestamptz;'
+        )
+      } else {
+        setArchiveError(
+          error
+            ? `Could not archive: ${error.message}`
+            : 'Could not archive. Check that your account still has admin access.'
+        )
+      }
+      return
+    }
+
+    setDistributions((cur) => cur.filter((d) => !ids.includes(d.id)))
+    setEditingDistId(null)
+    setOpenDistId(null)
+    flashArchive(successMessage)
+  }
+
+  function archiveRecord(dist) {
+    const label = [dist.item, dist.household_head].filter(Boolean).join(' · ')
+    if (
+      !window.confirm(
+        `Archive this record?\n\n${label}\n\nIt will move to the Archive tab and can be restored there. Inventory is not changed.`
+      )
+    ) {
+      return
+    }
+    archiveRecords(
+      [dist],
+      `record-${dist.id}`,
+      `Archived "${dist.item || 'distribution record'}". You can restore it from the Archive tab.`
+    )
+  }
+
+  function archiveGroup(group) {
+    const count = group.items.length
+    if (
+      !window.confirm(
+        `Archive all ${count} distribution record${count === 1 ? '' : 's'} for ${
+          group.household_head || 'this household'
+        }?\n\nThey will move to the Archive tab and can be restored there. Inventory is not changed.`
+      )
+    ) {
+      return
+    }
+    archiveRecords(
+      group.items,
+      `group-${group.key}`,
+      `Archived ${count} record${count === 1 ? '' : 's'} for ${group.household_head || 'this household'}.`
+    )
   }
 
   const filteredDonations = useMemo(() => {
@@ -1315,6 +1422,33 @@ export default function ReportsTab() {
         )}
       </Card>
 
+      {archiveNotice && (
+        <div className="no-print mb-3 flex items-start justify-between gap-3 rounded-lg border border-beneficiary-dark bg-beneficiary-light px-4 py-2.5 text-xs font-semibold text-beneficiary-dark">
+          <span>✓ {archiveNotice}</span>
+          <button
+            type="button"
+            onClick={() => setArchiveNotice('')}
+            aria-label="Dismiss"
+            className="shrink-0 text-beneficiary-dark/70 hover:text-beneficiary-dark"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      {archiveError && (
+        <div className="no-print mb-3 flex items-start justify-between gap-3 rounded-lg bg-warn-bg px-4 py-2.5 text-xs font-semibold text-warn-text">
+          <span>{archiveError}</span>
+          <button
+            type="button"
+            onClick={() => setArchiveError('')}
+            aria-label="Dismiss"
+            className="shrink-0 text-warn-text/70 hover:text-warn-text"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <p className="text-xs text-faint">Loading report data…</p>
       ) : (
@@ -1543,7 +1677,7 @@ export default function ReportsTab() {
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h2 className="text-sm font-bold text-ink">Beneficiaries &amp; what they received</h2>
-                <p className="no-print text-[11px] text-faint">Tap a household to see everything they received.</p>
+                <p className="no-print text-[11px] text-faint">Tap a household to see everything they received. Archived records move to the Archive tab.</p>
                 {itemFilter && (
                   <button
                     onClick={() => setItemFilter('')}
@@ -1595,6 +1729,9 @@ export default function ReportsTab() {
                       setEditingDistId(null)
                       loadAll()
                     }}
+                    onArchiveRecord={archiveRecord}
+                    onArchiveGroup={archiveGroup}
+                    archiveBusy={archiveBusy}
                   />
                 ))}
               </div>

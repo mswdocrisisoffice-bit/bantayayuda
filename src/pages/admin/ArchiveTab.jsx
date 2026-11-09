@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Card from '../../components/ui/Card.jsx'
 import PageBanner from '../../components/ui/PageBanner.jsx'
 import { supabase } from '../../lib/supabase.js'
@@ -82,6 +82,11 @@ export default function ArchiveTab() {
   const [confirmKey, setConfirmKey] = useState(null)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
+  const errorRef = useRef(null)
+
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [error])
 
   async function loadAll(showSpinner = false) {
     if (showSpinner) setLoading(true)
@@ -243,13 +248,68 @@ export default function ArchiveTab() {
     const t = TYPES[item.type]
     setBusyKey(item.key)
     setError('')
-    const { error: err } = await supabase.from(t.table).delete().eq('id', item.id)
-    setBusyKey(null)
-    setConfirmKey(null)
-    if (err) {
-      setError(`Could not delete: ${err.message}`)
+
+    const permissionMessage =
+      'Permanent delete is blocked by database permissions. Run supabase/migrations/20261109_archive_permanent_delete.sql in the Supabase SQL Editor, then try again.'
+
+    // Prefer the database helper: it clears linked references (for example a
+    // household's distribution rows) before deleting, and returns how many
+    // rows were actually removed.
+    const rpc = await supabase.rpc('delete_archived_record', {
+      p_type: item.type,
+      p_id: item.id,
+    })
+
+    if (!rpc.error) {
+      const removed = Number(rpc.data) || 0
+      setBusyKey(null)
+      setConfirmKey(null)
+      if (removed === 0) {
+        setError('Nothing was deleted. Check that your account still has admin access.')
+        return
+      }
+      flash('Deleted permanently.')
+      loadAll()
       return
     }
+
+    // Older databases may not have the helper yet. Fall back to a direct
+    // delete so the tab keeps working, but verify a row was really removed.
+    const helperMissing =
+      rpc.error.code === 'PGRST202' ||
+      /could not find the function|schema cache|does not exist/i.test(rpc.error.message || '')
+
+    if (!helperMissing) {
+      setBusyKey(null)
+      setConfirmKey(null)
+      setError(
+        /permission|row-level security|policy/i.test(rpc.error.message || '')
+          ? permissionMessage
+          : `Could not delete: ${rpc.error.message}`
+      )
+      return
+    }
+
+    const { data: deletedRows, error: err } = await supabase
+      .from(t.table)
+      .delete()
+      .eq('id', item.id)
+      .select('id')
+
+    setBusyKey(null)
+    setConfirmKey(null)
+
+    if (err || !deletedRows || deletedRows.length === 0) {
+      setError(
+        err
+          ? /permission|row-level security|policy/i.test(err.message || '')
+            ? permissionMessage
+            : `Could not delete: ${err.message}`
+          : permissionMessage
+      )
+      return
+    }
+
     flash('Deleted permanently.')
     loadAll()
   }
@@ -346,7 +406,7 @@ export default function ArchiveTab() {
         </div>
       )}
       {error && (
-        <div className="mb-3 rounded-lg bg-warn-bg px-4 py-2.5 text-xs font-semibold text-warn-text">{error}</div>
+        <div ref={errorRef} className="mb-3 rounded-lg bg-warn-bg px-4 py-2.5 text-xs font-semibold text-warn-text">{error}</div>
       )}
       {distUnavailable && (tab === 'all' || tab === 'distribution') && (
         <div className="mb-3 rounded-lg bg-warn-bg px-4 py-2.5 text-xs text-warn-text">

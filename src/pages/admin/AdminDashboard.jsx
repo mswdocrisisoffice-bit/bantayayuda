@@ -25,6 +25,7 @@ export const icons = {
   archive: <><rect x="2.5" y="4" width="19" height="4.5" rx="1" /><path d="M4 8.5V19a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V8.5" /><path d="M10 12.5h4" /></>,
   doc: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M9 13h6" /><path d="M9 17h6" /></>,
   barangay: <><path d="M12 2 3 7v13h18V7z" /><path d="M9 21v-6h6v6" /></>,
+  staff: <><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" /></>,
   logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" /></>,
   chevronLeft: <path d="m15 6-6 6 6 6" />,
   chevronRight: <path d="m9 6 6 6-6 6" />,
@@ -49,6 +50,7 @@ export const TABS = [
   { label: 'Report generator', to: '/admin/report-generator', icon: 'generator' },
   { label: 'Requisition (RIS)', to: '/admin/ris', icon: 'doc' },
   { label: 'Archive', to: '/admin/archive', icon: 'archive' },
+  { label: 'Staff profile', to: '/admin/staff-profile', icon: 'staff' },
 ]
 
 export function AdminTabs({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) {
@@ -67,6 +69,7 @@ export function AdminTabs({ collapsed, setCollapsed, mobileOpen, setMobileOpen }
     { title: null, items: [TABS[0]] },
     { title: 'Operations', items: [TABS[2], TABS[3], TABS[4], TABS[7]] },
     { title: 'Data & Reports', items: [TABS[1], TABS[5], TABS[6], TABS[8]] },
+    { title: 'Account', items: [TABS[9]] },
   ]
 
   return (

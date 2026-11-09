@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import dswdLogo from '../../assets/dswd-logo.png'
 import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
@@ -7,7 +7,15 @@ import PageBanner from '../../components/ui/PageBanner.jsx'
 import ESignatureCanvas from '../../components/ESignatureCanvas.jsx'
 import { BARANGAY_POSITIONS } from '../../components/ui/BarangayMap.jsx'
 import { supabase } from '../../lib/supabase.js'
-import { submitDistribution, cachedFetch } from '../../lib/offlineQueue.js'
+import { UNITS } from './DonationsTab.jsx'
+import {
+  submitDistribution,
+  cachedFetch,
+  listQueue,
+  onQueueChanged,
+  flushQueue,
+} from '../../lib/offlineQueue.js'
+import { loadStaffIdentity } from '../../lib/staffIdentity.js'
 
 const emptyMember = { name: '', relation: '', birthdate: '', age: '', sex: '', education: '', occupation: '', remarks: '' }
 
@@ -33,12 +41,18 @@ function Field({ number, label, required, children }) {
 
 const inputClass = "w-full rounded border border-line bg-white px-3 py-2 text-sm outline-none focus:border-admin"
 
-const UNITS = ['kg', 'g', 'l', 'ml', 'pcs', 'boxes', 'sacks', 'packs', 'bottles', 'cans']
-
 function generateSerialNumber() {
   const year = new Date().getFullYear()
   const rand = String(Date.now()).slice(-6)
   return `MF-${year}-${rand}`
+}
+
+/* Unit to pre-select for an inventory item. Cash-type items fall back to PHP
+   so staff do not have to change it by hand. */
+function defaultUnitFor(item) {
+  const unit = (item?.unit || '').trim()
+  if (unit) return unit
+  return /cash|pera|gcash|php|money|financial/i.test(item?.item || '') ? 'PHP' : 'kg'
 }
 
 /* ── Barangay field with suggestions from the 22 official barangays.
@@ -836,7 +850,7 @@ function QuickDistributionForm({ existingRecord, onDone }) {
               const chosen = inventory.find((i) => i.item === e.target.value)
               setSelectedItem(e.target.value)
               setQuantity('')
-              setUnit(chosen?.unit || 'kg')
+              setUnit(defaultUnitFor(chosen))
             }}
           >
             <option value="" disabled>
@@ -873,6 +887,7 @@ function QuickDistributionForm({ existingRecord, onDone }) {
             <div>
               <label className="mb-1 block text-xs font-semibold text-muted">Unit</label>
               <select className={inputClass} value={unit} onChange={(e) => setUnit(e.target.value)}>
+                {unit && !UNITS.includes(unit) && <option value={unit}>{unit}</option>}
                 {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
               </select>
               <p className="mt-1 text-[11px] text-faint">
@@ -909,6 +924,8 @@ function QuickDistributionForm({ existingRecord, onDone }) {
         {signature && <p className="mt-2 text-xs font-semibold text-donor-dark">Thumbmark captured ✓</p>}
       </div>
 
+      <OfflineConfirmHint />
+
       <div className="mt-4 flex items-center gap-3">
         <Button
           variant="admin"
@@ -941,13 +958,38 @@ function ExistingBeneficiaryFlow({ onSwitchToNew }) {
   async function checkSerialNumber() {
     if (!serialNumber.trim()) return
     setChecking(true)
-    const { data, error } = await supabase
-      .from('distributions')
-      .select('*')
-      .eq('serial_number', serialNumber.trim())
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    const serial = serialNumber.trim()
+
+    // A household registered on this device while offline can be found again
+    // straight from the waiting queue, so staff can hand out a second item.
+    try {
+      const queued = (await listQueue()).find(
+        (item) =>
+          item.type === 'distribution' &&
+          String(item.row?.serial_number || '').trim() === serial
+      )
+      if (queued?.row) {
+        setLookupError(false)
+        setRecord(queued.row)
+        setSearched(true)
+        setChecking(false)
+        return
+      }
+    } catch {
+      // IndexedDB unavailable — fall through to the normal lookup.
+    }
+
+    // cachedFetch keeps the last copy of this serial on the device, so a
+    // household that was opened before can still be found without signal.
+    const { data, error } = await cachedFetch(`distribution_serial_${serial}`, () =>
+      supabase
+        .from('distributions')
+        .select('*')
+        .eq('serial_number', serial)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    )
     setLookupError(!!error && !data)
     setRecord(data || null)
     setSearched(true)
@@ -995,8 +1037,9 @@ function ExistingBeneficiaryFlow({ onSwitchToNew }) {
         <div className="mt-4 rounded border border-warn-text bg-warn-bg p-4 text-xs text-warn-text">
           <p className="font-bold">Could not look up this serial number — no signal.</p>
           <p className="mt-1">
-            Existing beneficiaries can only be found when online (unless you searched this serial earlier on this device).
-            You can still use "Register new family" to record the distribution offline.
+            This serial has not been opened on this device before. Search it once while online and it will
+            be available offline next time. You can also use “Register new family” to record the
+            distribution now — it will wait on this device and upload when the signal returns.
           </p>
         </div>
       )}
@@ -1419,7 +1462,7 @@ function NewFamilyForm({ prefillSerial, onOpenPending }) {
                 setForm((f) => ({
                   ...f,
                   item: e.target.value,
-                  unit: chosen?.unit || 'kg',
+                  unit: defaultUnitFor(chosen),
                   quantity: '',
                 }))
               }}
@@ -1452,6 +1495,7 @@ function NewFamilyForm({ prefillSerial, onOpenPending }) {
           {selectedInventoryItem && (
             <Field label="Unit">
               <select className={inputClass} value={form.unit} onChange={(e) => update('unit', e.target.value)}>
+                {form.unit && !UNITS.includes(form.unit) && <option value={form.unit}>{form.unit}</option>}
                 {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
               </select>
               <p className="mt-1 text-[11px] text-faint">
@@ -1495,6 +1539,7 @@ function NewFamilyForm({ prefillSerial, onOpenPending }) {
           {signature && <p className="mt-2 text-xs font-semibold text-donor-dark">Thumbmark captured ✓</p>}
         </div>
 
+        <OfflineConfirmHint />
         <Button variant="admin" disabled={!canSubmit} onClick={handleSubmit}>
           {status === 'saving' ? 'Saving…' : 'Confirm distribution'}
         </Button>
@@ -1529,12 +1574,211 @@ function NewFamilyForm({ prefillSerial, onOpenPending }) {
   )
 }
 
+/* Inline reminder shown while the device has no signal, so staff know the
+   confirm button still works and the record waits on this device. */
+function OfflineConfirmHint() {
+  const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine)
+
+  useEffect(() => {
+    const up = () => setOnline(true)
+    const down = () => setOnline(false)
+    window.addEventListener('online', up)
+    window.addEventListener('offline', down)
+    return () => {
+      window.removeEventListener('online', up)
+      window.removeEventListener('offline', down)
+    }
+  }, [])
+
+  if (online) return null
+
+  return (
+    <p className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
+      No signal right now — “Confirm distribution” will save this record on this device.
+      It is uploaded automatically when the connection returns.
+    </p>
+  )
+}
+
+/* ── Distributions confirmed on this device that are still waiting for signal ── */
+function WaitingDistributions() {
+  const [items, setItems] = useState([])
+  const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine)
+  const [syncing, setSyncing] = useState(false)
+
+  async function refresh() {
+    try {
+      const all = await listQueue()
+      setItems(all.filter((item) => item.type === 'distribution'))
+    } catch {
+      // IndexedDB unavailable — nothing to show.
+    }
+  }
+
+  useEffect(() => {
+    refresh()
+    const off = onQueueChanged(refresh)
+    const up = () => setOnline(true)
+    const down = () => setOnline(false)
+    window.addEventListener('online', up)
+    window.addEventListener('offline', down)
+    return () => {
+      off()
+      window.removeEventListener('online', up)
+      window.removeEventListener('offline', down)
+    }
+  }, [])
+
+  async function uploadNow() {
+    setSyncing(true)
+    try {
+      await flushQueue()
+    } finally {
+      setSyncing(false)
+      refresh()
+    }
+  }
+
+  if (items.length === 0) return null
+
+  const failed = items.filter((item) => item.lastError).length
+
+  return (
+    <div className="mb-4 overflow-hidden rounded-xl border-2 border-amber-300 bg-amber-50">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-amber-600 shadow-sm">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7v5l3 2" />
+          </svg>
+        </span>
+
+        <div className="min-w-0 flex-1">
+          <div className="text-[10px] font-bold uppercase tracking-wide text-amber-700">
+            {online ? 'Waiting to upload' : 'Saved offline — waiting for signal'}
+          </div>
+          <div className="text-sm font-bold text-ink">
+            {items.length} distribution{items.length === 1 ? '' : 's'} confirmed on this device
+          </div>
+          <p className="text-[11px] text-amber-800/80">
+            {failed
+              ? `${failed} could not upload yet. Tap “Try now” once you have signal.`
+              : 'They will be added to the records automatically when the signal returns.'}
+          </p>
+        </div>
+
+        {online && (
+          <button
+            type="button"
+            onClick={uploadNow}
+            disabled={syncing}
+            className="shrink-0 rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-60"
+          >
+            {syncing ? 'Uploading…' : 'Try now'}
+          </button>
+        )}
+      </div>
+
+      <ul className="divide-y divide-amber-200/70 border-t border-amber-200/70 bg-white/60">
+        {items.slice(0, 5).map((item) => {
+          const row = item.row || {}
+          return (
+            <li key={item.qid} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-[11px]">
+              <div className="min-w-0">
+                <div className="truncate font-bold text-ink">
+                  {row.household_head || 'Unnamed household'}
+                </div>
+                <div className="truncate text-faint">
+                  Serial {row.serial_number || '—'}
+                  {row.item ? ` · ${row.item}` : ''}
+                  {row.quantity ? ` · ${row.quantity} ${row.unit || ''}` : ''}
+                </div>
+              </div>
+              <span
+                title={item.lastError || ''}
+                className={`shrink-0 rounded-full px-2 py-0.5 font-bold ${
+                  item.lastError ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'
+                }`}
+              >
+                {item.lastError ? 'Upload failed — retrying' : 'Waiting'}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+
+      {items.length > 5 && (
+        <p className="border-t border-amber-200/70 px-4 py-1.5 text-[11px] text-amber-800/80">
+          +{items.length - 5} more waiting
+        </p>
+      )}
+    </div>
+  )
+}
+
+/* Shows who is recording the distribution, using the same verified staff name
+   that auto-fills the Donations form. */
+function StaffRecordingNotice({ identity }) {
+  if (!identity) return null
+  const verified = Boolean(identity.fullName)
+
+  return (
+    <div
+      className={`mb-4 flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3 ${
+        verified ? 'border-admin/20 bg-admin-light' : 'border-amber-300 bg-amber-50'
+      }`}
+    >
+      <span
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm ${
+          verified ? 'text-admin' : 'text-amber-600'
+        }`}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+          <circle cx="12" cy="8" r="4" />
+          <path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" />
+        </svg>
+      </span>
+
+      <div className="min-w-0 flex-1">
+        <div className={`text-[10px] font-bold uppercase tracking-wide ${verified ? 'text-admin-dark' : 'text-amber-700'}`}>
+          {verified ? 'Recording as verified staff' : 'Staff name not set'}
+        </div>
+        <div className="truncate text-sm font-bold text-ink">
+          {verified ? identity.fullName : 'Set your name in Staff profile first'}
+        </div>
+        <div className="truncate text-[11px] text-faint">
+          {identity.email}
+          {verified ? ' · Verified administrator' : ' · Required for the record'}
+        </div>
+      </div>
+
+      <Link
+        to="/admin/staff-profile"
+        className={`rounded-lg px-3 py-1.5 text-[11px] font-bold shadow-sm transition ${
+          verified ? 'bg-white text-admin-dark hover:bg-white/80' : 'bg-amber-500 text-white hover:bg-amber-600'
+        }`}
+      >
+        {verified ? 'Edit name' : 'Set name'}
+      </Link>
+    </div>
+  )
+}
+
 export default function RecordDistributionTab() {
   const [searchParams, setSearchParams] = useSearchParams()
   const paramMode = searchParams.get('mode')
   const mode = paramMode === 'new' || paramMode === 'existing' || paramMode === 'pending' ? paramMode : null
 
   const [prefillSerial, setPrefillSerial] = useState('')
+  const [identity, setIdentity] = useState(null)
+
+  useEffect(() => {
+    let alive = true
+    loadStaffIdentity().then((next) => {
+      if (alive) setIdentity(next)
+    })
+    return () => { alive = false }
+  }, [])
 
   function selectMode(next) {
     setSearchParams(next ? { mode: next } : {})
@@ -1548,6 +1792,10 @@ export default function RecordDistributionTab() {
         icon={<img src={dswdLogo} alt="DSWD logo" className="h-9 w-9 rounded-full bg-white object-contain p-0.5 sm:h-11 sm:w-11" />}
         className="mb-4"
       />
+
+      <StaffRecordingNotice identity={identity} />
+
+      <WaitingDistributions />
 
       {mode && (
         <button

@@ -104,17 +104,37 @@ async function sendAccount(body) {
 
 /* ── public: save now if online, otherwise queue ── */
 async function queueItem(item) {
-  await put({ qid: newId(), createdAt: Date.now(), attempts: 0, ...item })
-  return { queued: true }
+  try {
+    await put({ qid: newId(), createdAt: Date.now(), attempts: 0, ...item })
+    return { queued: true }
+  } catch (err) {
+    // IndexedDB unavailable (private mode / storage full) — nothing was saved.
+    return { error: err }
+  }
+}
+
+/* A slow or half-dead connection should not leave the confirm button hanging
+   on "Saving…". After this long the entry is kept on the device and retried. */
+function withTimeout(promise, ms = 12000) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(Object.assign(new Error('timeout'), { status: 0 })), ms)
+    ),
+  ])
 }
 
 /** args: { row, signatureBlob, fileName, account }  → { ok } | { queued } | { error } */
 export async function submitDistribution({ row, signatureBlob, fileName, account }) {
   const item = { type: 'distribution', row, rowId: newId(), signatureBlob, fileName, account: account || null }
   if (navigator.onLine) {
-    const r = await sendDistribution(item)
-    if (r.ok) return { ok: true }
-    if (!r.networkError) return { error: r.error }
+    try {
+      const r = await withTimeout(sendDistribution(item))
+      if (r.ok) return { ok: true }
+      if (!r.networkError) return { error: r.error }
+    } catch (err) {
+      if (!isNetworkError(err)) return { error: err }
+    }
   }
   return queueItem(item)
 }
@@ -123,9 +143,13 @@ export async function submitDistribution({ row, signatureBlob, fileName, account
 export async function submitDonation({ row, donorEmail }) {
   const item = { type: 'donation', row, rowId: newId(), donorEmail: donorEmail || '' }
   if (navigator.onLine) {
-    const r = await sendDonation(item)
-    if (r.ok) return { ok: true }
-    if (!r.networkError) return { error: r.error }
+    try {
+      const r = await withTimeout(sendDonation(item))
+      if (r.ok) return { ok: true }
+      if (!r.networkError) return { error: r.error }
+    } catch (err) {
+      if (!isNetworkError(err)) return { error: err }
+    }
   }
   return queueItem(item)
 }

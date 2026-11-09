@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
 import Badge from '../../components/ui/Badge.jsx'
@@ -6,6 +7,7 @@ import Avatar from '../../components/ui/Avatar.jsx'
 import PageBanner from '../../components/ui/PageBanner.jsx'
 import { supabase } from '../../lib/supabase.js'
 import { submitDonation, cachedFetch } from '../../lib/offlineQueue.js'
+import { loadStaffIdentity } from '../../lib/staffIdentity.js'
 import { BARANGAY_POSITIONS } from '../../components/ui/BarangayMap.jsx'
 import { CashPaymentPanel, PaymentAccountsManager } from './PaymentAccounts.jsx'
 
@@ -51,7 +53,11 @@ export const CATEGORIES = {
   ],
 }
 
-export const UNITS = ['pcs', 'kg', 'g', 'L', 'mL', 'sacks', 'boxes', 'packs', 'bottles', 'cans', 'sets', 'pairs', 'rolls', 'PHP']
+export const UNITS = [
+  'pcs', 'kg', 'g', 'L', 'mL', 'sacks', 'boxes', 'packs', 'bottles', 'cans',
+  'sets', 'pairs', 'rolls', 'cartons', 'sachets', 'tubes', 'sheets', 'meters',
+  'bundles', 'kits', 'dozen', 'gallons', 'PHP',
+]
 
 export const DONOR_TYPES = [
   { value: 'non-government', label: 'Non-government / Private' },
@@ -75,8 +81,9 @@ export function useAllCategories() {
     const { data } = await cachedFetch('categories', () =>
       supabase
         .from('donation_categories')
-        .select('name, donation_items(name, unit)')
-        .eq('is_active', true)
+        .select('id, name, donation_items(id, name, unit)')
+        // Older rows may have been saved without is_active — treat those as active.
+        .or('is_active.eq.true,is_active.is.null')
         .order('name')
     )
     setCustom(data || [])
@@ -96,7 +103,7 @@ export function useAllCategories() {
     return merged
   }, [custom])
 
-  return { categories, reload }
+  return { categories, custom, reload }
 }
 
 /* ── Unit that usually goes with an item (pants → pcs, rice → kg, canned goods → cans …).
@@ -124,6 +131,11 @@ export function suggestUnit(category, item, customItem = '') {
 
 function donorDisplayName(d) {
   return d.full_name || (d.email ? d.email.split('@')[0] : 'Unnamed donor')
+}
+
+/* Recorded-by must come from a verified admin/staff profile, never free text. */
+function staffDisplayName(s) {
+  return (s?.full_name || '').trim() || (s?.email ? s.email.split('@')[0] : 'Staff member')
 }
 
 export function formatDateTime(iso) {
@@ -450,7 +462,6 @@ export function EditDonationRow({ donation, categories, onCancel, onSaved }) {
     unit: donation.unit || 'kg',
     barangay: donation.barangay || '',
     donorType: donation.donor_type || 'non-government',
-    recordedBy: donation.recorded_by || '',
     description: donation.description || '',
     isPrivate: donation.is_private || false,
   })
@@ -472,7 +483,6 @@ export function EditDonationRow({ donation, categories, onCancel, onSaved }) {
         unit: form.unit,
         barangay: form.barangay,
         donor_type: form.donorType,
-        recorded_by: form.recordedBy,
         description: form.description,
         is_private: form.isPrivate,
       })
@@ -548,13 +558,17 @@ export function EditDonationRow({ donation, categories, onCancel, onSaved }) {
           <p className="mt-1 text-xs text-faint">{DONOR_TYPE_HINTS[form.donorType]}</p>
         </div>
         <div>
-          <label className="mb-1.5 block text-xs font-bold text-ink">Recorded by (staff name)</label>
-          <input
-            value={form.recordedBy}
-            onChange={(e) => update('recordedBy', e.target.value)}
-            placeholder="Recorded by (staff name)"
-            className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-admin"
-          />
+          <label className="mb-1.5 block text-xs font-bold text-ink">Recorded by (verified staff)</label>
+          <div className="flex items-center gap-2 rounded-lg border border-line bg-slate-50 px-3 py-2 text-sm text-muted">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0 text-faint">
+              <rect x="4" y="11" width="16" height="10" rx="2" />
+              <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+            </svg>
+            <span className="truncate font-semibold text-ink">{donation.recorded_by || '—'}</span>
+          </div>
+          <p className="mt-1 text-[11px] text-faint">
+            Locked to the staff account that recorded this donation. It can no longer be edited.
+          </p>
         </div>
 
         <label className="flex items-center gap-2 text-xs text-muted sm:col-span-2">
@@ -686,6 +700,15 @@ export function DonationBox({ d, isOpen, onToggle, actions }) {
             <div className="truncate text-[11px] text-faint">
               {d.donor_name || 'Anonymous'} · Brgy. {d.barangay}
             </div>
+            <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3 shrink-0 text-faint">
+                <circle cx="12" cy="8" r="4" />
+                <path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" />
+              </svg>
+              <span className="truncate">
+                Recorded by <span className="font-semibold text-ink">{d.recorded_by || '—'}</span>
+              </span>
+            </div>
           </div>
           <span
             className="shrink-0 rounded-md px-2.5 py-1 text-xs font-bold"
@@ -758,7 +781,11 @@ function SectionCard({ step, title, hint, children }) {
 }
 
 export default function DonationsTab() {
-  const { categories: allCategories, reload: reloadCategories } = useAllCategories()
+  const {
+    categories: allCategories,
+    custom: customCategories,
+    reload: reloadCategories,
+  } = useAllCategories()
 
   const [form, setForm] = useState({
     donorName: '',
@@ -778,9 +805,14 @@ export default function DonationsTab() {
   const [status, setStatus] = useState('')
   const [savedNote, setSavedNote] = useState('')
   const [unitTouched, setUnitTouched] = useState(false) // true once staff picks a unit by hand
+  const [removingKey, setRemovingKey] = useState('') // id of the custom category/item being removed
+  const [manageNote, setManageNote] = useState('')
 
   const [donations, setDonations] = useState([])
   const [donors, setDonors] = useState([]) // registered donor accounts, used for suggestions
+  const [staff, setStaff] = useState([]) // verified admin/staff profiles allowed in "Recorded by"
+  const [currentStaffId, setCurrentStaffId] = useState('')
+  const [myIdentity, setMyIdentity] = useState(null)
   const [listLoading, setListLoading] = useState(true)
 
   async function loadDonations() {
@@ -805,9 +837,50 @@ export default function DonationsTab() {
     setDonors(data || [])
   }
 
+  /* Only pre-provisioned admin accounts are allowed as "Recorded by" values. */
+  async function loadStaff() {
+    // The signed-in staff member's own verified name (set once on the Staff
+    // profile page) is the default and is merged into the verified list.
+    const identity = await loadStaffIdentity()
+    const uid = identity?.id || ''
+    setCurrentStaffId(uid)
+    setMyIdentity(identity)
+
+    const { data } = await cachedFetch('admin_staff', () =>
+      supabase
+        .from('profiles')
+        .select('id, full_name, email, role')
+        .eq('role', 'admin')
+        .order('full_name', { ascending: true })
+    )
+
+    // Only staff who have verified a name are selectable. An account with no
+    // saved name is prompted to set one on the Staff profile page instead.
+    let list = (data || []).filter((s) => (s.full_name || '').trim())
+    if (identity?.id && identity.fullName) {
+      const self = {
+        id: identity.id,
+        email: identity.email || '',
+        role: identity.role || 'admin',
+        full_name: identity.fullName,
+      }
+      const index = list.findIndex((s) => s.id === identity.id)
+      list = index === -1
+        ? [self, ...list]
+        : list.map((s) => (s.id === identity.id ? { ...s, full_name: self.full_name, email: s.email || self.email } : s))
+    }
+    setStaff(list)
+
+    // Pre-fill the logged-in staff member so the usual entry is one pick.
+    if (identity?.fullName) {
+      setForm((f) => (f.recordedBy ? f : { ...f, recordedBy: identity.fullName }))
+    }
+  }
+
   useEffect(() => {
     loadDonations()
     loadDonors()
+    loadStaff()
   }, [])
 
   function update(field, value) {
@@ -815,6 +888,7 @@ export default function DonationsTab() {
   }
 
   const isNewCategory = form.category === OTHER_CATEGORY
+  const selectedStaff = staff.find((s) => staffDisplayName(s) === form.recordedBy)
 
   /* Unit recommended for the chosen item (pants → pcs, rice → kg …) */
   const suggestedUnit = form.category ? suggestUnit(form.category, form.item, form.customItem) : ''
@@ -843,6 +917,71 @@ export default function DonationsTab() {
       customItem: v,
       unit: unitTouched ? f.unit : suggestUnit(f.category, OTHER, v),
     }))
+  }
+
+  /* ── Remove custom categories/items added through “Other (specify)” ──
+     Built-in categories/items are hard-coded and cannot be removed. */
+  async function removeCustomItem(cat, item) {
+    if (!item?.id) return
+    const label = item.name
+    if (!window.confirm(`Remove the item “${label}” from ${cat.name}? Donations already recorded keep their item name.`)) return
+
+    setRemovingKey(item.id)
+    setManageNote('')
+
+    let { error } = await supabase.from('donation_items').delete().eq('id', item.id)
+    if (error) {
+      // Some databases prefer hiding the row instead of deleting it.
+      const fallback = await supabase.from('donation_items').update({ is_active: false }).eq('id', item.id)
+      error = fallback.error
+    }
+    setRemovingKey('')
+
+    if (error) {
+      setManageNote(`Could not remove “${label}”: ${error.message}`)
+      return
+    }
+
+    if (form.item === label) handleItemChange('')
+    setManageNote(`Removed the item “${label}”.`)
+    await reloadCategories()
+  }
+
+  async function removeCustomCategory(cat) {
+    if (!cat?.id) return
+    const label = cat.name
+
+    if (CATEGORIES[label]) {
+      setManageNote('Built-in categories cannot be removed. You can remove their custom items one by one.')
+      return
+    }
+
+    if (!window.confirm(`Remove the custom category “${label}” and its items? Donations already recorded keep their names.`)) return
+
+    setRemovingKey(cat.id)
+    setManageNote('')
+
+    // Delete the items first in case the database has a restricting foreign key.
+    const itemRes = await supabase.from('donation_items').delete().eq('category_id', cat.id)
+    let error = itemRes.error
+    if (!error) {
+      const catRes = await supabase.from('donation_categories').delete().eq('id', cat.id)
+      error = catRes.error
+    }
+    if (error) {
+      const fallback = await supabase.from('donation_categories').update({ is_active: false }).eq('id', cat.id)
+      error = fallback.error
+    }
+    setRemovingKey('')
+
+    if (error) {
+      setManageNote(`Could not remove “${label}”: ${error.message}`)
+      return
+    }
+
+    if (form.category === label) handleCategoryChange('')
+    setManageNote(`Removed the category “${label}”.`)
+    await reloadCategories()
   }
 
   /* The donor account that matches the typed email (if any) */
@@ -888,18 +1027,31 @@ export default function DonationsTab() {
     if (!cat) {
       const { data: created, error } = await supabase
         .from('donation_categories')
-        .insert({ name: categoryName })
+        .insert({ name: categoryName, is_active: true })
         .select('id')
         .single()
       if (error) return false
       cat = created
+    } else {
+      // Bring back a category that was hidden by the Remove action.
+      await supabase.from('donation_categories').update({ is_active: true }).eq('id', cat.id)
     }
 
     if (itemName) {
       const { error } = await supabase
         .from('donation_items')
         .insert({ category_id: cat.id, name: itemName, unit: unit || null })
-      if (error && error.code !== '23505') return false // 23505 = item already saved
+      if (error?.code === '23505') {
+        // Item already exists — make sure a previously hidden one becomes visible again.
+        const safeItem = itemName.replace(/[%_]/g, '\\$&')
+        await supabase
+          .from('donation_items')
+          .update({ is_active: true })
+          .eq('category_id', cat.id)
+          .ilike('name', safeItem)
+      } else if (error) {
+        return false
+      }
     }
     return true
   }
@@ -908,6 +1060,13 @@ export default function DonationsTab() {
     e.preventDefault()
     setStatus('saving')
     setSavedNote('')
+
+    // The staff name must be verified once before this account can record.
+    if (myIdentity && !myIdentity.fullName) {
+      setStatus('error')
+      setSavedNote('Set your verified staff name in Staff profile before recording a donation.')
+      return
+    }
 
     // Resolve the final category name (typed one is matched to an existing one, ignoring case)
     let finalCategory = form.category
@@ -1004,6 +1163,24 @@ export default function DonationsTab() {
     }
   }
 
+  // Custom categories (added with “Other (specify)”), plus built-in categories
+  // that only got custom items. Built-in rows with no custom items are hidden.
+  const manageableCategories = customCategories.filter(
+    (cat) => !CATEGORIES[cat.name] || (cat.donation_items || []).length > 0
+  )
+
+  // The category/item currently chosen, when it is a removable custom one.
+  const selectedCustomCategory = customCategories.find(
+    (cat) => cat.name === form.category && !CATEGORIES[cat.name]
+  )
+  const selectedCustomItem = (() => {
+    if (!form.category || !form.item || form.item === OTHER) return null
+    if ((CATEGORIES[form.category] || []).includes(form.item)) return null
+    const cat = customCategories.find((c) => c.name === form.category)
+    const item = (cat?.donation_items || []).find((i) => i.name === form.item)
+    return cat && item ? { cat, item } : null
+  })()
+
   const cashItemName = (form.item === OTHER ? form.customItem : form.item) || ''
   const isCash =
     /cash|pera|gcash|php/i.test(cashItemName) ||
@@ -1022,6 +1199,40 @@ export default function DonationsTab() {
         }
         className="mb-4"
       />
+
+      {myIdentity && !myIdentity.fullName && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-amber-600 shadow-sm">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+              <rect x="4" y="11" width="16" height="10" rx="2" />
+              <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+            </svg>
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-ink">Verify your staff name first</p>
+            <p className="text-xs text-muted">
+              This name will appear in “Recorded by” for every donation you record. You only need to set it once.
+            </p>
+          </div>
+          <Link
+            to="/admin/staff-profile"
+            className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-amber-600"
+          >
+            Set my name →
+          </Link>
+        </div>
+      )}
+
+      {myIdentity?.fullName && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-admin/15 bg-admin-light/70 px-4 py-2.5 text-xs text-admin-dark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0">
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+          <span>Recording as <b className="text-ink">{myIdentity.fullName}</b></span>
+          {myIdentity.email && <span className="truncate text-faint">· {myIdentity.email}</span>}
+          <Link to="/admin/staff-profile" className="ml-auto font-bold hover:underline">Edit</Link>
+        </div>
+      )}
 
       <Card className="overflow-hidden p-0">
       <form onSubmit={handleSubmit}>
@@ -1116,7 +1327,20 @@ export default function DonationsTab() {
         {/* ── 2. What was donated ── */}
         <SectionCard step="2" title="What was donated?" hint="The unit is suggested from the item. Change it if needed.">
           <div>
-            <label className="mb-1.5 block text-xs font-bold text-ink">Category</label>
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <label className="block text-xs font-bold text-ink">Category</label>
+              {selectedCustomCategory && (
+                <button
+                  type="button"
+                  onClick={() => removeCustomCategory(selectedCustomCategory)}
+                  disabled={removingKey === selectedCustomCategory.id || !selectedCustomCategory.id}
+                  title="Remove this custom category"
+                  className="flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-bold text-red-600 transition hover:bg-red-100 disabled:opacity-50"
+                >
+                  <span aria-hidden="true">✕</span> Remove
+                </button>
+              )}
+            </div>
             <select
               required
               value={form.category}
@@ -1133,7 +1357,17 @@ export default function DonationsTab() {
 
           {isNewCategory ? (
             <div>
-              <label className="mb-1.5 block text-xs font-bold text-ink">New category name</label>
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <label className="block text-xs font-bold text-ink">New category name</label>
+                <button
+                  type="button"
+                  onClick={() => { handleCategoryChange(''); setManageNote('') }}
+                  title="Cancel adding a new category"
+                  className="flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-bold text-red-600 transition hover:bg-red-100"
+                >
+                  <span aria-hidden="true">✕</span> Cancel
+                </button>
+              </div>
               <input
                 required
                 placeholder="e.g. Cash Assistance"
@@ -1144,7 +1378,20 @@ export default function DonationsTab() {
             </div>
           ) : (
             <div>
-              <label className="mb-1.5 block text-xs font-bold text-ink">Item</label>
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <label className="block text-xs font-bold text-ink">Item</label>
+                {selectedCustomItem && (
+                  <button
+                    type="button"
+                    onClick={() => removeCustomItem(selectedCustomItem.cat, selectedCustomItem.item)}
+                    disabled={removingKey === selectedCustomItem.item.id || !selectedCustomItem.item.id}
+                    title="Remove this custom item"
+                    className="flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-bold text-red-600 transition hover:bg-red-100 disabled:opacity-50"
+                  >
+                    <span aria-hidden="true">✕</span> Remove
+                  </button>
+                )}
+              </div>
               <select
                 required
                 value={form.item}
@@ -1162,9 +1409,22 @@ export default function DonationsTab() {
 
           {form.item === OTHER && (
             <div className="sm:col-span-2">
-              <label className="mb-1.5 block text-xs font-bold text-ink">
-                {isNewCategory ? 'Item name (first item in this new category)' : 'Specify item name'}
-              </label>
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <label className="block text-xs font-bold text-ink">
+                  {isNewCategory ? 'Item name (first item in this new category)' : 'Specify item name'}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isNewCategory) update('customItem', '')
+                    else handleItemChange('')
+                  }}
+                  title={isNewCategory ? 'Clear the item name' : 'Cancel this custom item'}
+                  className="flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-bold text-red-600 transition hover:bg-red-100"
+                >
+                  <span aria-hidden="true">✕</span> {isNewCategory ? 'Clear' : 'Cancel'}
+                </button>
+              </div>
               <input
                 required
                 placeholder={isNewCategory ? 'e.g. Cash' : 'Type the item name'}
@@ -1224,6 +1484,74 @@ export default function DonationsTab() {
           </div>
 
           {isCash && <CashPaymentPanel />}
+
+          {manageableCategories.length > 0 && (
+            <details className="sm:col-span-2 rounded-xl border border-line-soft bg-line-soft/30 px-3 py-2.5">
+              <summary className="cursor-pointer text-xs font-bold text-admin-dark">
+                Manage custom categories &amp; items ({manageableCategories.length})
+              </summary>
+              <p className="mt-1 text-[11px] text-faint">
+                These were added with “Other (specify)”. Built-in categories and items stay permanent.
+              </p>
+
+              <div className="mt-2 space-y-2">
+                {manageableCategories.map((cat) => {
+                  const builtIn = Boolean(CATEGORIES[cat.name])
+                  const items = cat.donation_items || []
+                  return (
+                    <div key={cat.id || cat.name} className="rounded-lg border border-line-soft bg-white p-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="truncate text-xs font-bold text-ink">{cat.name}</span>
+                          {builtIn && (
+                            <span className="ml-1.5 rounded bg-line-soft px-1.5 py-0.5 text-[10px] font-semibold text-faint">
+                              built-in
+                            </span>
+                          )}
+                        </div>
+                        {!builtIn && (
+                          <button
+                            type="button"
+                            onClick={() => removeCustomCategory(cat)}
+                            disabled={removingKey === cat.id || !cat.id}
+                            className="shrink-0 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-bold text-red-600 transition hover:bg-red-100 disabled:opacity-50"
+                          >
+                            {removingKey === cat.id ? 'Removing…' : 'Remove category'}
+                          </button>
+                        )}
+                      </div>
+
+                      {items.length > 0 && (
+                        <ul className="mt-1.5 space-y-1 border-t border-line-soft pt-1.5">
+                          {items.map((item) => (
+                            <li key={item.id || item.name} className="flex items-center justify-between gap-2 pl-1 text-[11px] text-muted">
+                              <span className="truncate">
+                                {item.name}{item.unit ? ` · ${item.unit}` : ''}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => removeCustomItem(cat, item)}
+                                disabled={removingKey === item.id || !item.id}
+                                className="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-bold text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+                              >
+                                {removingKey === item.id ? 'Removing…' : 'Remove item'}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              {manageNote && (
+                <p className="mt-2 rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-semibold text-admin-dark">
+                  {manageNote}
+                </p>
+              )}
+            </details>
+          )}
         </SectionCard>
 
         {/* ── 3. Where from + who recorded ── */}
@@ -1238,14 +1566,57 @@ export default function DonationsTab() {
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-bold text-ink">Recorded by (staff name)</label>
-            <input
+            <label className="mb-1.5 block text-xs font-bold text-ink">Recorded by (verified staff)</label>
+            <select
               required
-              placeholder="e.g. Name"
               value={form.recordedBy}
               onChange={(e) => update('recordedBy', e.target.value)}
               className="w-full rounded-xl border-2 border-line bg-white px-4 py-3 text-sm outline-none transition focus:border-admin focus:ring-4 focus:ring-admin/10"
-            />
+            >
+              <option value="">Select a verified staff member</option>
+              {staff.map((s) => (
+                <option key={s.id} value={staffDisplayName(s)}>
+                  {staffDisplayName(s)}{s.id === currentStaffId ? ' (you)' : ''}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[11px] text-faint">
+              {selectedStaff
+                ? `✓ Verified staff account${selectedStaff.email ? ` · ${selectedStaff.email}` : ''}`
+                : 'Only verified MSWDO staff accounts can be chosen. Names are never typed freely.'}
+            </p>
+            {staff.length > 0 && (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-[11px] font-semibold text-admin-dark">
+                  View {staff.length} verified staff account{staff.length === 1 ? '' : 's'}
+                </summary>
+                <ul className="mt-1.5 space-y-1 rounded-lg border border-line-soft bg-line-soft/30 p-2">
+                  {staff.map((s) => (
+                    <li key={s.id} className="flex items-center justify-between gap-2 text-[11px]">
+                      <span className="truncate font-semibold text-ink">{staffDisplayName(s)}</span>
+                      <span className="shrink-0 truncate font-mono text-[10px] text-faint">
+                        {s.email || `ID ${String(s.id).slice(0, 8)}`}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {staff.length === 0 && (
+              <p className="mt-1 text-[11px] font-semibold text-admin">
+                No verified staff accounts were found. Ask the system administrator to register staff first.
+              </p>
+            )}
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line-soft bg-line-soft/40 px-3 py-2">
+              <p className="text-[11px] text-muted">
+                {myIdentity?.fullName
+                  ? <>Your verified name: <span className="font-bold text-ink">{myIdentity.fullName}</span></>
+                  : 'Set your staff name once so it auto-fills here every time.'}
+              </p>
+              <Link to="/admin/staff-profile" className="text-[11px] font-bold text-admin-dark hover:underline">
+                {myIdentity?.fullName ? 'Manage staff profile →' : 'Set up staff profile →'}
+              </Link>
+            </div>
           </div>
 
           <div className="sm:col-span-2">
@@ -1264,7 +1635,12 @@ export default function DonationsTab() {
 
         {/* ── Submit ── */}
         <div className="flex flex-wrap items-center gap-4 bg-line-soft/30 px-4 py-5 sm:px-6">
-          <Button type="submit" variant="admin">
+          <Button
+            type="submit"
+            variant="admin"
+            disabled={status === 'saving' || (myIdentity !== null && !myIdentity.fullName)}
+            className="sm:max-w-xs"
+          >
             {status === 'saving' ? 'Saving…' : 'Record donation'}
           </Button>
 
@@ -1278,7 +1654,7 @@ export default function DonationsTab() {
           )}
           {status === 'error' && (
             <p className="text-sm font-semibold text-admin">
-              Could not save — please check the fields and try again.
+              {savedNote || 'Could not save — please check the fields and try again.'}
             </p>
           )}
         </div>

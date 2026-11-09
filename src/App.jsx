@@ -18,6 +18,7 @@ import ReportsTab from './pages/admin/ReportsTab.jsx'
 import RisTab from './pages/admin/RisTab.jsx'
 import ReportGenerator from './pages/admin/ReportGenerator.jsx'
 import ArchiveTab from './pages/admin/ArchiveTab.jsx'
+import StaffProfileTab from './pages/admin/StaffProfileTab.jsx'
 
 import BeneficiaryLogin from './pages/beneficiary/BeneficiaryLogin.jsx'
 import BeneficiaryDashboard from './pages/beneficiary/BeneficiaryDashboard.jsx'
@@ -61,6 +62,7 @@ export default function App() {
           <Route path="/admin/ris" element={<RisTab />} />
           <Route path="/admin/report-generator" element={<ReportGenerator />} />
           <Route path="/admin/archive" element={<ArchiveTab />} />
+          <Route path="/admin/staff-profile" element={<StaffProfileTab />} />
         </Route>
 
         {/* Beneficiary: login only. Accounts are created by staff in Record distribution */}
