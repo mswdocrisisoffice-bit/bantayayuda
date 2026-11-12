@@ -77,13 +77,19 @@ create table distributions (
 );
 
 -- ─────────────────────────────────────────────
--- 5. Donation flags (donor comments/corrections on an admin's entry)
+-- 5. Donation flags (comments/concerns from donors or beneficiaries)
 -- ─────────────────────────────────────────────
 create table donation_flags (
   id uuid primary key default gen_random_uuid(),
   donation_id uuid references donations(id) on delete cascade,
   donor_id uuid references profiles(id),
+  beneficiary_id uuid references profiles(id) on delete cascade,
+  kind text not null default 'donor' check (kind in ('donor', 'beneficiary')),
   message text not null,
+  admin_reply text,
+  replied_at timestamptz,
+  status text not null default 'open',
+  archived_at timestamptz,
   created_at timestamptz default now()
 );
 
@@ -139,11 +145,17 @@ create policy "admin inserts distributions" on distributions
 create policy "admin deletes distributions" on distributions
   for delete using (public.is_admin());
 
--- Donation flags: donor can add/read their own flags on their own donations; admin reads all
+-- Donation flags: donors and beneficiaries can add/read their own comments; admin reads all
 create policy "donor inserts own flags" on donation_flags
-  for insert with check (auth.uid() = donor_id);
+  for insert with check (auth.uid() = donor_id and kind = 'donor');
 create policy "donor reads own flags" on donation_flags
   for select using (auth.uid() = donor_id or public.is_admin());
+create policy "beneficiary inserts own flags" on donation_flags
+  for insert with check (auth.uid() = beneficiary_id and kind = 'beneficiary');
+create policy "beneficiary reads own flags" on donation_flags
+  for select using (auth.uid() = beneficiary_id or public.is_admin());
+create policy "admin updates donation_flags" on donation_flags
+  for update using (public.is_admin()) with check (public.is_admin());
 create policy "admin deletes donation_flags" on donation_flags
   for delete using (public.is_admin());
 

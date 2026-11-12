@@ -202,7 +202,7 @@ function SerialChip({ serial }) {
   )
 }
 
-function ReplyForm({ flag, onReplied }) {
+function ReplyForm({ flag, onReplied, recipient = 'donor' }) {
   const [open, setOpen] = useState(false)
   const [reply, setReply] = useState(flag.admin_reply || '')
   const [saving, setSaving] = useState(false)
@@ -243,7 +243,7 @@ function ReplyForm({ flag, onReplied }) {
         onClick={() => setOpen(true)}
         className="mt-1 text-[11px] font-semibold text-admin-dark"
       >
-        Reply to donor
+        Reply to {recipient}
       </button>
     )
   }
@@ -253,7 +253,11 @@ function ReplyForm({ flag, onReplied }) {
       <textarea
         value={reply}
         onChange={(e) => setReply(e.target.value)}
-        placeholder="e.g. Corrected the quantity to 25kg, thank you for flagging."
+        placeholder={
+          recipient === 'household'
+            ? 'e.g. We checked your record. Please visit the MSWDO to update your household details.'
+            : 'e.g. Corrected the quantity to 25kg, thank you for flagging.'
+        }
         rows={2}
         className="w-full rounded-lg border border-line bg-white px-3 py-2 text-xs outline-none focus:border-admin"
       />
@@ -746,6 +750,74 @@ function DonorCard({ donor, donations, flags, onArchiveFlag, busyFlagId, onRepli
   )
 }
 
+/* ── One household's comments/concerns, with reply + archive ── */
+function BeneficiaryCommentCard({ group, onArchiveFlag, busyFlagId, onReplied }) {
+  const [open, setOpen] = useState(false)
+  const unreplied = group.flags.filter((f) => !f.admin_reply).length
+  const name = tidy(group.household?.household_head) || 'Unnamed household'
+  const barangay = tidy(group.household?.barangay)
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-line bg-white shadow-sm">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setOpen((o) => !o) }}
+        className="flex cursor-pointer items-center justify-between gap-3 p-4 transition hover:bg-line-soft/40"
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar name={name} size="sm" />
+          <div className="min-w-0">
+            <div className="truncate text-sm font-bold text-ink">{name}</div>
+            <div className="truncate text-[11px] text-faint">
+              {barangay ? `Barangay ${barangay}` : 'Beneficiary household'}
+            </div>
+            <div className="text-[11px] text-faint">
+              {group.flags.length} message{group.flags.length === 1 ? '' : 's'}
+            </div>
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+            unreplied > 0 ? 'bg-warn-bg text-warn-text' : 'bg-beneficiary-light text-beneficiary-dark'
+          }`}>
+            {unreplied > 0 ? `${unreplied} to reply` : 'Replied'}
+          </span>
+          <span className="text-[10px] font-semibold text-faint">{open ? 'Hide' : 'Open'}</span>
+        </div>
+      </div>
+
+      {open && (
+        <div className="space-y-3 border-t border-line-soft bg-line-soft/30 p-4">
+          {group.flags.map((f) => (
+            <div key={f.id}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="rounded-lg bg-warn-bg px-3 py-2 text-[11px] text-warn-text">
+                  "{f.message}"{' '}
+                  <span className="text-faint">— {formatDateTime(f.created_at)}</span>
+                </div>
+                <button
+                  onClick={() => {
+                    if (confirm('Archive this comment? It will move to the Archive tab.')) {
+                      onArchiveFlag(f.id)
+                    }
+                  }}
+                  disabled={busyFlagId === f.id}
+                  className="shrink-0 rounded-lg bg-admin px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-admin-dark disabled:opacity-50"
+                >
+                  {busyFlagId === f.id ? 'Archiving…' : 'Archive'}
+                </button>
+              </div>
+              <ReplyForm flag={f} onReplied={onReplied} recipient="household" />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ReportsTab() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -754,6 +826,7 @@ export default function ReportsTab() {
   const [distributions, setDistributions] = useState([])
   const [inventory, setInventory] = useState([])
   const [donors, setDonors] = useState([])
+  const [beneficiaries, setBeneficiaries] = useState([])
   const [flags, setFlags] = useState([])
   const [loading, setLoading] = useState(true)
   const [busyFlagId, setBusyFlagId] = useState(null)
@@ -777,11 +850,12 @@ export default function ReportsTab() {
 
   async function loadAll() {
     setLoading(true)
-    const [donationsRes, distributionsRes, inventoryRes, donorsRes, flagsRes] = await Promise.all([
+    const [donationsRes, distributionsRes, inventoryRes, donorsRes, beneficiariesRes, flagsRes] = await Promise.all([
       supabase.from('donations').select('*').order('created_at', { ascending: false }),
       supabase.from('distributions').select('*').order('created_at', { ascending: false }),
       supabase.from('inventory').select('*').order('category', { ascending: true }).order('item', { ascending: true }),
       supabase.from('profiles').select('*').eq('role', 'donor'),
+      supabase.from('beneficiaries').select('id, household_head, barangay, contact_number'),
       supabase
         .from('donation_flags')
         .select('*')
@@ -793,6 +867,7 @@ export default function ReportsTab() {
     setDistributions((distributionsRes.data || []).filter((d) => !d.archived_at))
     setInventory(inventoryRes.data || [])
     setDonors(donorsRes.data || [])
+    setBeneficiaries(beneficiariesRes.data || [])
     setFlags(flagsRes.data || [])
     setLoading(false)
   }
@@ -1157,6 +1232,26 @@ export default function ReportsTab() {
       .sort((a, b) => new Date(b.donations[0]?.created_at || 0) - new Date(a.donations[0]?.created_at || 0))
   }, [donors, donations, flags])
 
+  const beneficiaryCommentGroups = useMemo(() => {
+    const byHousehold = new Map()
+    const householdById = new Map(beneficiaries.map((b) => [b.id, b]))
+    flags
+      .filter((f) => f.beneficiary_id)
+      .forEach((f) => {
+        if (!byHousehold.has(f.beneficiary_id)) {
+          byHousehold.set(f.beneficiary_id, {
+            id: f.beneficiary_id,
+            household: householdById.get(f.beneficiary_id) || null,
+            flags: [],
+          })
+        }
+        byHousehold.get(f.beneficiary_id).flags.push(f)
+      })
+    return [...byHousehold.values()].sort(
+      (a, b) => new Date(b.flags[0]?.created_at || 0) - new Date(a.flags[0]?.created_at || 0)
+    )
+  }, [beneficiaries, flags])
+
   function exportDistributionsCsv() {
     const csv = toCsv(filteredDistributions, [
       { key: 'created_at', label: 'Date & time' },
@@ -1492,7 +1587,7 @@ export default function ReportsTab() {
               { key: 'stock', label: 'Stock status', icon: 'box', badge: needsAttentionCount > 0 ? needsAttentionCount : null, warn: true },
               { key: 'beneficiaries', label: 'Beneficiaries', icon: 'users', badge: beneficiariesRegisteredCount },
               { key: 'barangays', label: 'Barangay summary', icon: 'map' },
-              { key: 'donors', label: 'Donors & comments', icon: 'chat', badge: donorSummaries.length },
+              { key: 'donors', label: 'Donors & comments', icon: 'chat', badge: donorSummaries.length + beneficiaryCommentGroups.length },
               { key: 'registry', label: 'Donor registry', icon: 'idcard', badge: donors.length },
             ].map((tab) => {
               const active = activeTab === tab.key
@@ -1783,7 +1878,8 @@ export default function ReportsTab() {
           <Card className="mb-4 p-5">
             <h2 className="text-sm font-bold text-ink">Registered donors &amp; comments</h2>
             <p className="mb-4 text-[11px] text-faint">
-              Tap a donor to see what they donated. Archive a comment once it's been addressed. It moves to the Archive tab.
+              Tap a donor to see what they donated. Donor comments and beneficiary concerns are below.
+              Archive a comment once it's been addressed. It moves to the Archive tab.
             </p>
             {donorSummaries.length === 0 ? (
               <p className="text-xs text-faint">
@@ -1797,6 +1893,30 @@ export default function ReportsTab() {
                     donor={donor}
                     donations={theirDonations}
                     flags={theirFlags}
+                    onArchiveFlag={archiveFlag}
+                    busyFlagId={busyFlagId}
+                    onReplied={loadAll}
+                  />
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card className="mb-4 p-5">
+            <h2 className="text-sm font-bold text-ink">Beneficiary comments &amp; concerns</h2>
+            <p className="mb-4 text-[11px] text-faint">
+              Messages sent from the beneficiary dashboard. Reply to the household or archive a concern once it's resolved.
+            </p>
+            {beneficiaryCommentGroups.length === 0 ? (
+              <p className="text-xs text-faint">
+                No beneficiary comments yet. Households can send a message from Help → Message the MSWDO.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {beneficiaryCommentGroups.map((group) => (
+                  <BeneficiaryCommentCard
+                    key={group.id}
+                    group={group}
                     onArchiveFlag={archiveFlag}
                     busyFlagId={busyFlagId}
                     onReplied={loadAll}

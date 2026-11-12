@@ -46,7 +46,7 @@ const TYPES = {
   comment: {
     label: 'Comment', table: 'donation_flags', accent: '#b45309', icon: 'chat',
     restore: { status: 'open', archived_at: null },
-    hint: 'Donor comments that were already addressed.',
+    hint: 'Donor and beneficiary comments that were already addressed.',
   },
 }
 
@@ -145,7 +145,10 @@ export default function ArchiveTab() {
       out.push({
         key: `comment-${f.id}`, type: 'comment', id: f.id, archivedAt: f.archived_at,
         title: `“${f.message}”`,
-        sub: f.admin_reply ? `Your reply: “${f.admin_reply}”` : 'No reply was sent',
+        sub: [
+          f.kind === 'beneficiary' || f.beneficiary_id ? 'Beneficiary concern' : 'Donor comment',
+          f.admin_reply ? `Your reply: “${f.admin_reply}”` : 'No reply was sent',
+        ].join(' · '),
         extra: '',
       })
     )

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { DonationBox, EditDonationRow, useAllCategories, categoryColor } from './DonationsTab.jsx'
 
@@ -24,6 +24,10 @@ export default function StockDetailsModal({ category, item, unit, inventoryId, o
   const [deleteError, setDeleteError] = useState('')
 
   const color = categoryColor(category)
+  const placeSuggestions = useMemo(
+    () => [...new Set(rows.map((r) => (r.barangay || '').trim()).filter(Boolean))],
+    [rows]
+  )
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -137,6 +141,7 @@ export default function StockDetailsModal({ category, item, unit, inventoryId, o
                   key={d.id}
                   donation={d}
                   categories={categories}
+                  suggestions={placeSuggestions}
                   onCancel={() => setEditingId(null)}
                   onSaved={async () => {
                     setEditingId(null)

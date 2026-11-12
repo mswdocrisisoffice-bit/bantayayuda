@@ -307,45 +307,144 @@ function DonorSuggestInput({
   )
 }
 
-/* ── Barangay input that lists the 22 official barangays and filters as you type ── */
-function BarangaySuggestInput({ label, value, onChange, required, size = 'md' }) {
-  const [open, setOpen] = useState(false)
-  const [active, setActive] = useState(0)
+const EMPTY_SUGGESTIONS = []
+const MANOLO_FORTICH_CENTER = { lat: 8.37, lng: 124.86 }
 
-  const names = useMemo(
-    () => BARANGAY_POSITIONS.map((b) => b.name).sort((a, b) => a.localeCompare(b)),
-    []
-  )
+/* Turn an online map result into a readable "Barangay, Town, Province" label. */
+function placeLabel(p) {
+  const parts = [p?.name, p?.city || p?.county || p?.district, p?.state]
+    .map((part) => (part || '').trim())
+    .filter(Boolean)
+  const label = []
+  for (const part of parts) {
+    if (!label.length || label[label.length - 1].toLowerCase() !== part.toLowerCase()) {
+      label.push(part)
+    }
+  }
+  return label.join(', ')
+}
+
+/* Search places anywhere in the Philippines, biased towards Manolo Fortich. */
+async function searchPlacesOnline(term, signal) {
+  const params = new URLSearchParams({
+    q: term,
+    limit: '8',
+    lang: 'en',
+    lat: String(MANOLO_FORTICH_CENTER.lat),
+    lon: String(MANOLO_FORTICH_CENTER.lng),
+  })
+  const res = await fetch(`https://photon.komoot.io/api/?${params.toString()}`, { signal })
+  if (!res.ok) throw new Error(`Place search failed (${res.status})`)
+  const data = await res.json()
+  const labels = (data.features || [])
+    .filter((f) => f.properties?.countrycode === 'PH')
+    .filter((f) => f.properties?.osm_key === 'place' || f.properties?.osm_value === 'administrative')
+    .map((f) => placeLabel(f.properties))
+    .filter(Boolean)
+  return [...new Set(labels)]
+}
+
+/* ── Location input: suggests Manolo Fortich barangays, past donation places and places online ── */
+function BarangaySuggestInput({
+  label,
+  value,
+  onChange,
+  required,
+  size = 'md',
+  extraSuggestions = EMPTY_SUGGESTIONS,
+}) {
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(-1)
+  const [remote, setRemote] = useState([])
+  const [searching, setSearching] = useState(false)
+
+  const names = useMemo(() => {
+    const all = new Set(BARANGAY_POSITIONS.map((b) => b.name))
+    extraSuggestions.forEach((place) => {
+      const name = (place || '').trim()
+      if (name) all.add(name)
+    })
+    return [...all].sort((a, b) => a.localeCompare(b))
+  }, [extraSuggestions])
+
   const q = value.trim().toLowerCase()
-  const matches = useMemo(
+  const localMatches = useMemo(
     () => names.filter((n) => !q || n.toLowerCase().includes(q)),
     [names, q]
   )
   const isOfficial = names.some((n) => n.toLowerCase() === q)
-  const showList = open && matches.length > 0 && !(matches.length === 1 && isOfficial)
+  const allMatches = useMemo(() => {
+    const seen = new Set(localMatches.map((n) => n.toLowerCase()))
+    const extra = remote.filter((n) => {
+      const key = n.toLowerCase()
+      const first = n.split(',')[0].trim().toLowerCase()
+      if (seen.has(key) || seen.has(first)) return false
+      seen.add(key)
+      return true
+    })
+    return [...localMatches, ...extra]
+  }, [localMatches, remote])
+  const showList = open && (allMatches.length > 0 || searching) && !isOfficial
   const pad = size === 'sm' ? 'px-3 py-2' : 'px-4 py-3'
+
+  // Search online only after a short pause, so typing stays smooth.
+  useEffect(() => {
+    const term = value.trim()
+    const online = typeof navigator === 'undefined' || navigator.onLine
+    if (!open || term.length < 3 || isOfficial || !online) {
+      setRemote([])
+      setSearching(false)
+      return
+    }
+
+    setSearching(true)
+    const controller = new AbortController()
+    const timer = setTimeout(async () => {
+      try {
+        setRemote(await searchPlacesOnline(term, controller.signal))
+      } catch (err) {
+        if (err.name !== 'AbortError') setRemote([])
+      } finally {
+        if (!controller.signal.aborted) setSearching(false)
+      }
+    }, 400)
+
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [value, open, isOfficial])
+
+  useEffect(() => { setActive(-1) }, [remote])
 
   function pick(name) {
     onChange(name)
     setOpen(false)
+    setActive(-1)
   }
 
   function handleKeyDown(e) {
     if (!showList) {
-      if (e.key === 'ArrowDown') setOpen(true)
+      if (e.key === 'ArrowDown') {
+        setOpen(true)
+        setActive(allMatches.length ? 0 : -1)
+      }
       return
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setActive((i) => (i + 1) % matches.length)
+      if (allMatches.length) setActive((i) => (i < 0 ? 0 : (i + 1) % allMatches.length))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
-      setActive((i) => (i - 1 + matches.length) % matches.length)
+      if (allMatches.length) setActive((i) => (i <= 0 ? allMatches.length - 1 : i - 1))
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      pick(matches[active] || matches[0])
+      // Enter picks a highlighted suggestion; otherwise keep whatever was typed.
+      if (active >= 0 && allMatches[active]) pick(allMatches[active])
+      else setOpen(false)
     } else if (e.key === 'Escape') {
       setOpen(false)
+      setActive(-1)
     }
   }
 
@@ -355,15 +454,18 @@ function BarangaySuggestInput({ label, value, onChange, required, size = 'md' })
       <input
         required={required}
         autoComplete="off"
-        placeholder="Tap to choose a barangay, or type to search"
+        placeholder="Type any barangay or place, or pick a suggestion"
         value={value}
         onChange={(e) => {
           onChange(e.target.value)
-          setActive(0)
+          setActive(-1)
           setOpen(true)
         }}
         onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
+        onBlur={() => {
+          setOpen(false)
+          setActive(-1)
+        }}
         onKeyDown={handleKeyDown}
         className={`w-full rounded-xl border-2 border-line bg-white ${pad} text-sm outline-none transition focus:border-admin focus:ring-4 focus:ring-admin/10`}
       />
@@ -371,9 +473,13 @@ function BarangaySuggestInput({ label, value, onChange, required, size = 'md' })
       {showList && (
         <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-lg border border-line-soft bg-white shadow-[0_6px_16px_rgba(0,0,0,0.15)]">
           <div className="sticky top-0 border-b border-line-soft bg-line-soft/60 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-muted">
-            Official barangays · {matches.length}
+            {q
+              ? searching && allMatches.length === 0
+                ? 'Searching places…'
+                : `Suggested places · ${allMatches.length}`
+              : `Manolo Fortich barangays · ${allMatches.length}`}
           </div>
-          {matches.map((n, i) => (
+          {allMatches.map((n, i) => (
             <button
               key={n}
               type="button"
@@ -389,12 +495,28 @@ function BarangaySuggestInput({ label, value, onChange, required, size = 'md' })
               {n}
             </button>
           ))}
+          {searching && allMatches.length > 0 && (
+            <div className="px-3 py-2 text-[11px] text-faint">Searching more places…</div>
+          )}
+          {q && !isOfficial && (
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault()
+                setOpen(false)
+                setActive(-1)
+              }}
+              className="block w-full border-t border-line-soft bg-white px-3 py-2 text-left text-sm font-semibold text-admin-dark transition hover:bg-admin-light"
+            >
+              Use “{value.trim()}” as entered
+            </button>
+          )}
         </div>
       )}
 
       {value.trim() && !isOfficial && !open && (
-        <p className="mt-1 text-[11px] font-semibold text-warn-text">
-          ⚠ Not in the official list of 22 barangays. Check the spelling, or pick from the list.
+        <p className="mt-1 text-[11px] font-semibold text-muted">
+          ✓ Will be saved as typed. Any barangay or place is allowed.
         </p>
       )}
     </div>
@@ -452,7 +574,7 @@ function CategoryItemFields({ categories, category, item, customItem, onCategory
   )
 }
 
-export function EditDonationRow({ donation, categories, onCancel, onSaved }) {
+export function EditDonationRow({ donation, categories, onCancel, onSaved, suggestions = EMPTY_SUGGESTIONS }) {
   const known = categories[donation.category]?.includes(donation.item)
   const [form, setForm] = useState({
     category: donation.category || '',
@@ -528,10 +650,11 @@ export function EditDonationRow({ donation, categories, onCancel, onSaved }) {
 
         <div className="sm:col-span-2">
           <BarangaySuggestInput
-            label="Barangay"
+            label="Barangay / place"
             size="sm"
             value={form.barangay}
             onChange={(v) => update('barangay', v)}
+            extraSuggestions={suggestions}
           />
         </div>
 
@@ -698,7 +821,7 @@ export function DonationBox({ d, isOpen, onToggle, actions }) {
           <div className="min-w-0">
             <div className="truncate text-sm font-bold text-ink">{d.item}</div>
             <div className="truncate text-[11px] text-faint">
-              {d.donor_name || 'Anonymous'} · Brgy. {d.barangay}
+              {d.donor_name || 'Anonymous'} · {d.barangay}
             </div>
             <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3 shrink-0 text-faint">
@@ -735,7 +858,7 @@ export function DonationBox({ d, isOpen, onToggle, actions }) {
               <span className="text-faint">Donor type:</span>{' '}
               {d.donor_type === 'government' ? 'Government' : d.donor_type ? 'Non-government' : '—'}
             </div>
-            <div><span className="text-faint">Barangay:</span> {d.barangay || '—'}</div>
+            <div><span className="text-faint">Barangay / place:</span> {d.barangay || '—'}</div>
             <div><span className="text-faint">Recorded by:</span> {d.recorded_by || '—'}</div>
             <div><span className="text-faint">Date &amp; time:</span> {formatDateTime(d.created_at)}</div>
             <div><span className="text-faint">Donor identity:</span> {d.is_private ? 'Private' : 'Public'}</div>
@@ -814,6 +937,12 @@ export default function DonationsTab() {
   const [currentStaffId, setCurrentStaffId] = useState('')
   const [myIdentity, setMyIdentity] = useState(null)
   const [listLoading, setListLoading] = useState(true)
+
+  // Places already used on donation records, so they show up as suggestions next time.
+  const knownDonationPlaces = useMemo(
+    () => [...new Set(donations.map((d) => (d.barangay || '').trim()).filter(Boolean))],
+    [donations]
+  )
 
   async function loadDonations() {
     setListLoading(true)
@@ -1555,13 +1684,14 @@ export default function DonationsTab() {
         </SectionCard>
 
         {/* ── 3. Where from + who recorded ── */}
-        <SectionCard step="3" title="Where from & who recorded it" hint="The barangay the donation came from, and the staff member entering it.">
+        <SectionCard step="3" title="Where from & who recorded it" hint="Where the donation came from — any barangay or place — and the staff member entering it.">
           <div className="sm:col-span-2">
             <BarangaySuggestInput
-              label="Barangay"
+              label="Barangay / place"
               required
               value={form.barangay}
               onChange={(v) => update('barangay', v)}
+              extraSuggestions={knownDonationPlaces}
             />
           </div>
 

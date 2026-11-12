@@ -212,6 +212,83 @@ function downloadCsv(filename, content) {
 const donorInput =
   'w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none transition focus:border-[#4d7c0f] focus:ring-2 focus:ring-[#4d7c0f]/20 disabled:bg-slate-50 disabled:text-faint'
 
+/* Leave a note on a donation record. It goes to the admin Reports tab. */
+function FlagForm({ donationId, donorId, onSubmitted }) {
+  const [open, setOpen] = useState(false)
+  const [message, setMessage] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function submit() {
+    const text = message.trim()
+    if (!text || !donorId) return
+    setSaving(true)
+    setError('')
+    const { error } = await supabase.from('donation_flags').insert({
+      donation_id: donationId,
+      donor_id: donorId,
+      kind: 'donor',
+      message: text,
+    })
+    setSaving(false)
+    if (error) {
+      setError(error.message || 'Could not send your note. Try again.')
+      return
+    }
+    setMessage('')
+    setOpen(false)
+    onSubmitted?.()
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-faint transition hover:text-[#4d7c0f]"
+      >
+        <Icon path={icons.info} className="h-3.5 w-3.5" />
+        Something wrong with this entry? Leave a note
+      </button>
+    )
+  }
+
+  return (
+    <div className="mt-3 rounded-xl border border-line-soft bg-white p-3">
+      <label className="mb-1.5 block text-xs font-bold text-ink">Note to the MSWDO</label>
+      <textarea
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        rows={3}
+        maxLength={500}
+        placeholder="e.g. The quantity should be 25kg, not 20kg."
+        className="w-full resize-none rounded-lg border border-line bg-white px-3 py-2 text-xs outline-none focus:border-[#4d7c0f]"
+      />
+      <div className="mt-1 flex items-center justify-between gap-2">
+        <span className="text-[10px] text-faint">{message.length}/500</span>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={submit}
+            disabled={saving || !message.trim()}
+            className="rounded-lg bg-[#4d7c0f] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+          >
+            {saving ? 'Sending…' : 'Send note to admin'}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setOpen(false); setError('') }}
+            className="rounded-lg px-3 py-1.5 text-xs font-semibold text-faint"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+      {error && <p className="mt-1 text-[11px] font-semibold text-red-600">{error}</p>}
+    </div>
+  )
+}
+
 export default function DonorDashboard() {
   const navigate = useNavigate()
   const [tab, setTab] = useState('overview')
@@ -225,6 +302,7 @@ export default function DonorDashboard() {
   const [avatarUrl, setAvatarUrl] = useState('')
   const [avatarPreset, setAvatarPreset] = useState('')
   const [donations, setDonations] = useState([])
+  const [flags, setFlags] = useState([]) // notes the donor left on their donations
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [catFilter, setCatFilter] = useState('All')
@@ -248,10 +326,16 @@ export default function DonorDashboard() {
       setEmail(currentUser.email || '')
 
       const meta = currentUser.user_metadata || {}
-      const [{ data: profileRow }, { data: rows }] = await Promise.all([
+      const [{ data: profileRow }, { data: rows }, { data: flagRows }] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', currentUser.id).maybeSingle(),
         supabase
           .from('donations')
+          .select('*')
+          .eq('donor_id', currentUser.id)
+          .neq('status', 'archived')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('donation_flags')
           .select('*')
           .eq('donor_id', currentUser.id)
           .neq('status', 'archived')
@@ -265,6 +349,7 @@ export default function DonorDashboard() {
       setAvatarUrl(prof?.avatar_url || meta.avatar_url || '')
       setAvatarPreset(meta.avatar_preset || '')
       setDonations(rows || [])
+      setFlags(flagRows || [])
 
       // Who received each donation (names are masked on the database side)
       const { data: dRows, error: dErr } = await supabase.rpc('donor_donation_distribution')
@@ -284,6 +369,17 @@ export default function DonorDashboard() {
   function notify(type, text) {
     setToast({ type, text })
     window.setTimeout(() => setToast(null), 3500)
+  }
+
+  async function loadFlags() {
+    if (!user?.id) return
+    const { data } = await supabase
+      .from('donation_flags')
+      .select('*')
+      .eq('donor_id', user.id)
+      .neq('status', 'archived')
+      .order('created_at', { ascending: false })
+    setFlags(data || [])
   }
 
   function goToTab(key) {
@@ -1268,6 +1364,29 @@ export default function DonorDashboard() {
                         "{d.description}"
                       </div>
                     )}
+
+                    <div className="mt-3 border-t border-line-soft pt-3">
+                      {flags.filter((f) => f.donation_id === d.id).map((f) => (
+                        <div key={f.id} className="mb-2">
+                          <div className="rounded-lg bg-warn-bg px-3 py-2 text-xs text-warn-text">
+                            Your note: "{f.message}"{' '}
+                            <span className="text-faint">— {fmtDateTime(f.created_at)}</span>
+                          </div>
+                          {f.admin_reply ? (
+                            <div className="mt-1 rounded-lg bg-beneficiary-light px-3 py-2 text-xs text-beneficiary-dark">
+                              MSWDO reply: "{f.admin_reply}"
+                            </div>
+                          ) : (
+                            <div className="mt-1 text-[10px] font-semibold text-faint">Waiting for a reply.</div>
+                          )}
+                        </div>
+                      ))}
+                      <FlagForm
+                        donationId={d.id}
+                        donorId={profile?.id || user?.id}
+                        onSubmitted={loadFlags}
+                      />
+                    </div>
 
                     {d.category && (
                       <div className="mt-3">

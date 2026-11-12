@@ -103,6 +103,7 @@ export default function BeneficiaryDashboard() {
   const [lastSignIn, setLastSignIn] = useState(null)
   const [aid, setAid] = useState([])
   const [aidLoading, setAidLoading] = useState(true)
+  const [flags, setFlags] = useState([]) // notes the household sent to the MSWDO
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState(
     ['profile', 'security', 'help'].includes(initialTab) ? initialTab : 'overview'
@@ -150,6 +151,8 @@ export default function BeneficiaryDashboard() {
       fillForm(householdData)
       setLoading(false)
 
+      await loadFlags(localUser.id)
+
       try {
         const rows = await fetchBeneficiaryAid(localUser.id, householdData)
         setAid(rows)
@@ -165,6 +168,17 @@ export default function BeneficiaryDashboard() {
   function notify(type, text) {
     setToast({ type, text })
     window.setTimeout(() => setToast(null), 3500)
+  }
+
+  async function loadFlags(id = userId) {
+    if (!id) return
+    const { data } = await supabase
+      .from('donation_flags')
+      .select('*')
+      .eq('beneficiary_id', id)
+      .neq('status', 'archived')
+      .order('created_at', { ascending: false })
+    setFlags(data || [])
   }
 
   async function handleSave(e) {
@@ -836,6 +850,37 @@ export default function BeneficiaryDashboard() {
               </div>
 
               <Card className="p-4 sm:p-6">
+                <h2 className="mb-1 text-sm font-bold text-ink">Message the MSWDO</h2>
+                <p className="mb-4 text-xs text-faint">
+                  Send a note about a missing distribution, a wrong record, or an account concern.
+                  Staff will see it in the admin dashboard and can reply here.
+                </p>
+
+                {flags.length > 0 && (
+                  <div className="mb-4 space-y-2">
+                    {flags.map((f) => (
+                      <div key={f.id} className="rounded-xl border border-line-soft p-3">
+                        <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-[10px] font-semibold text-faint">
+                          <span>You wrote</span>
+                          <span>{fmtDateTime(f.created_at)}</span>
+                        </div>
+                        <p className="text-xs text-ink">"{f.message}"</p>
+                        {f.admin_reply ? (
+                          <div className="mt-2 rounded-lg bg-beneficiary-light px-3 py-2 text-xs text-beneficiary-dark">
+                            MSWDO reply: "{f.admin_reply}"
+                          </div>
+                        ) : (
+                          <div className="mt-2 text-[10px] font-semibold text-faint">Waiting for a reply.</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <BeneficiaryCommentForm userId={userId} onSubmitted={() => loadFlags(userId)} />
+              </Card>
+
+              <Card className="p-4 sm:p-6">
                 <h2 className="mb-1 text-sm font-bold text-ink">Frequently asked questions</h2>
                 <p className="mb-2 text-xs text-faint">Tap a question to see the answer.</p>
                 <Faq items={HELP_FAQ} accent="#1d5fa8" />
@@ -932,5 +977,62 @@ function Field({ label, hint, children }) {
       {children}
       {hint && <span className="mt-1 block text-xs text-faint">{hint}</span>}
     </label>
+  )
+}
+
+/* Send a concern to the MSWDO. It shows up in the admin Reports tab. */
+function BeneficiaryCommentForm({ userId, onSubmitted }) {
+  const [message, setMessage] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [sent, setSent] = useState(false)
+
+  async function submit(e) {
+    e?.preventDefault()
+    const text = message.trim()
+    if (!text || !userId) return
+    setSaving(true)
+    setError('')
+    setSent(false)
+    const { error } = await supabase.from('donation_flags').insert({
+      beneficiary_id: userId,
+      kind: 'beneficiary',
+      message: text,
+    })
+    setSaving(false)
+    if (error) {
+      setError(error.message || 'Could not send your message. Try again.')
+      return
+    }
+    setMessage('')
+    setSent(true)
+    onSubmitted?.()
+    window.setTimeout(() => setSent(false), 4000)
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <label className="mb-1.5 block text-xs font-bold text-ink">Your message</label>
+      <textarea
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        rows={4}
+        maxLength={500}
+        placeholder="e.g. My household did not receive the rice listed in my record."
+        className="w-full resize-none rounded-xl border border-line bg-white px-3 py-2.5 text-sm outline-none transition focus:border-beneficiary focus:ring-2 focus:ring-beneficiary/20"
+      />
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+        <span className="text-[10px] text-faint">{message.length}/500</span>
+        <button
+          type="submit"
+          disabled={saving || !message.trim()}
+          className="rounded-lg bg-beneficiary px-4 py-2 text-xs font-bold text-white transition disabled:opacity-50"
+        >
+          {saving ? 'Sending…' : 'Send message'}
+        </button>
+      </div>
+      {error && <p className="mt-2 text-xs font-semibold text-red-600">{error}</p>}
+      {sent && <p className="mt-2 text-xs font-semibold text-beneficiary-dark">Message sent. The MSWDO will reply here.</p>}
+    </form>
   )
 }
