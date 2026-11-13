@@ -28,18 +28,23 @@ export default function AdminLayout() {
   const { pathname } = useLocation()
 
   return (
-    <div className="relative min-h-screen">
+    <div
+      className="relative min-h-screen"
+      style={{ '--admin-bg-left': collapsed ? '72px' : '256px' }}
+    >
+      {/* Background photo: keep it sharp and centered on every screen size. */}
       <div
-        className="no-print fixed inset-0 -z-10 bg-center bg-no-repeat"
+        className="admin-bg-photo no-print fixed inset-y-0 right-0 -z-10 bg-no-repeat"
         style={{
           backgroundImage: `url(${manoloBg})`,
           backgroundSize: 'cover',
-          imageRendering: 'high-quality',
+          backgroundPosition: 'center center',
         }}
       />
+      {/* Light wash so the photo stays clear but page text remains readable. */}
       <div
         className="no-print fixed inset-0 -z-10"
-        style={{ backgroundColor: 'rgba(198, 198, 189, 0.77)' }}
+        style={{ backgroundColor: 'rgba(255, 255, 255, 0.45)' }}
       />
 
       <OfflineStatus />

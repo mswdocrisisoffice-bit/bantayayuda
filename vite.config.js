@@ -26,6 +26,21 @@ export default defineConfig(({ command }) => ({
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         runtimeCaching: [
           {
+            // Donations change whenever an admin verifies or archives a row.
+            // Keep this cache very short-lived so a stale response can never
+            // keep an archived donation on the public feed.
+            urlPattern: ({ url, request }) =>
+              url.hostname.endsWith('.supabase.co') &&
+              url.pathname.startsWith('/rest/v1/donations') &&
+              request.method === 'GET',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'donations-cache',
+              networkTimeoutSeconds: 3,
+              expiration: { maxEntries: 50, maxAgeSeconds: 60 },
+            },
+          },
+          {
             urlPattern: ({ url, request }) =>
               url.hostname.endsWith('.supabase.co') &&
               url.pathname.startsWith('/rest/v1/') &&

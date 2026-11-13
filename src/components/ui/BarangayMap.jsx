@@ -133,9 +133,9 @@ export default function BarangayMap({ height = '320px' }) {
   useEffect(() => {
     async function load() {
       const [donationsRes, beneficiariesRes, distributionsRes] = await Promise.all([
-        supabase.from('donations').select('barangay, status, donor_name, item, quantity, unit, created_at'),
+        supabase.from('donations').select('barangay, status, donor_name, item, quantity, unit, created_at').neq('status', 'archived'),
         supabase.from('beneficiaries').select('barangay, household_size'),
-        supabase.from('distributions').select('barangay, household_head, serial_number'),
+        supabase.from('distributions').select('barangay, household_head, serial_number').is('archived_at', null),
       ])
 
       const stats = {}

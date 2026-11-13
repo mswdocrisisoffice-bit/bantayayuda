@@ -60,6 +60,19 @@ canvas {
   }
 }
 
+/* ── Admin background photo ──
+   The fixed photo starts after the navigation sidebar on desktop, so the
+   picture is centered in the area staff actually see — not behind the menu. */
+.admin-bg-photo {
+  left: 0;
+}
+
+@media (min-width: 1024px) {
+  .admin-bg-photo {
+    left: var(--admin-bg-left, 0px);
+  }
+}
+
 /* ── Leaflet maps ──
    Barangay labels stay small and quiet so the pins remain the focus. */
 .leaflet-container {

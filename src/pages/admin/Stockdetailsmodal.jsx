@@ -20,6 +20,7 @@ export default function StockDetailsModal({ category, item, unit, inventoryId, o
   const [openId, setOpenId] = useState(null)
   const [editingId, setEditingId] = useState(null)
   const [busyId, setBusyId] = useState(null)
+  const [archiveError, setArchiveError] = useState('')
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
 
@@ -54,15 +55,22 @@ export default function StockDetailsModal({ category, item, unit, inventoryId, o
 
   async function archive(id) {
     setBusyId(id)
+    setArchiveError('')
     const { error } = await supabase
       .from('donations')
       .update({ status: 'archived', archived_at: new Date().toISOString() })
       .eq('id', id)
     setBusyId(null)
-    if (!error) {
-      await load()
-      onChanged()
+    if (error) {
+      setArchiveError(
+        /check constraint|donations_status|archived_at/i.test(error.message || '')
+          ? 'Archive failed because the database is missing the archive update. Run supabase/migrations/20261113_donation_archive_public_feed.sql in the Supabase SQL Editor, then try again.'
+          : error.message || 'Could not archive this donation. Try again.'
+      )
+      return
     }
+    await load()
+    onChanged()
   }
 
   async function removeItem() {
@@ -127,6 +135,11 @@ export default function StockDetailsModal({ category, item, unit, inventoryId, o
 
         {/* Body */}
         <div className="space-y-3 p-4 sm:p-6">
+          {archiveError && (
+            <p className="rounded-lg border border-warn-text/30 bg-warn-bg px-3 py-2 text-xs font-semibold text-warn-text">
+              {archiveError}
+            </p>
+          )}
           {loading && <p className="text-sm text-faint">Loading…</p>}
           {!loading && rows.length === 0 && (
             <p className="rounded-lg border border-dashed border-line-soft p-6 text-center text-sm text-faint">

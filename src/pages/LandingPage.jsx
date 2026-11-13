@@ -52,29 +52,74 @@ const TRUST = [
   { icon: 'lock', label: 'Donor privacy protected' },
 ]
 
+/* Short, friendly age labels for the public feed. */
+function timeAgo(iso) {
+  const then = new Date(iso).getTime()
+  if (!Number.isFinite(then)) return ''
+  const mins = Math.max(0, Math.floor((Date.now() - then) / 60000))
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins} min ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours} hr${hours === 1 ? '' : 's'} ago`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days} day${days === 1 ? '' : 's'} ago`
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function fullDate(iso) {
+  return new Date(iso).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
+  })
+}
+
 export default function LandingPage() {
   const [feed, setFeed] = useState([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [updatedAt, setUpdatedAt] = useState(null)
   const [stats, setStats] = useState({ donations: null, households: null, served: null })
 
   useEffect(() => {
-    async function load() {
-      const { data } = await supabase
-        .from('donations')
-        .select('*')
-        .eq('status', 'confirmed')
-        .eq('is_private', false)
-        .order('created_at', { ascending: false })
-        .limit(8)
+    let cancelled = false
 
-      setFeed(data || [])
+    // Keep the feed defensive: archived entries never appear, and older
+    // deployments without the archived_at column still render the feed.
+    async function loadFeed() {
+      const base = () =>
+        supabase
+          .from('donations')
+          .select('*')
+          .eq('status', 'confirmed')
+          .eq('is_private', false)
+          .order('created_at', { ascending: false })
+          .limit(8)
+
+      let { data, error } = await base().is('archived_at', null)
+      if (error && /archived_at/i.test(error.message || '')) {
+        ;({ data } = await base())
+      }
+      return data || []
+    }
+
+    async function load(silent = false) {
+      if (silent) setRefreshing(true)
+      else setLoading(true)
+
+      const [rows, statsRes] = await Promise.all([
+        loadFeed(),
+        supabase.rpc('public_stats'),
+      ])
+      if (cancelled) return
+
+      setFeed(rows)
       setLoading(false)
+      setRefreshing(false)
+      setUpdatedAt(new Date())
 
       // Public counts come from a database function that returns totals only (no personal data),
       // because visitors are not allowed to read the beneficiaries table directly.
-      const { data: s, error: sErr } = await supabase.rpc('public_stats')
-      const row = Array.isArray(s) ? s[0] : s
-      if (!sErr && row) {
+      const row = Array.isArray(statsRes.data) ? statsRes.data[0] : statsRes.data
+      if (!statsRes.error && row) {
         setStats({
           donations: Number(row.donations),
           households: Number(row.households),
@@ -82,7 +127,15 @@ export default function LandingPage() {
         })
       }
     }
+
     load()
+    // New donations (and newly archived ones) show up without a manual reload.
+    const timer = window.setInterval(() => load(true), 60000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
   }, [])
 
   const statTiles = [
@@ -197,17 +250,26 @@ export default function LandingPage() {
           <Card className="overflow-hidden p-0 lg:col-span-3">
             <div className="flex items-center justify-between border-b border-line-soft bg-line-soft/40 px-4 py-3 sm:px-6 sm:py-4">
               <div className="flex items-center gap-2">
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-donor-light text-donor-dark">
-                  <Icon path={icons.clock} className="h-4 w-4" />
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-donor opacity-60" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-donor" />
                 </span>
                 <h3 className="text-sm font-bold text-ink">Recent donations</h3>
               </div>
-              {!loading && feed.length > 0 && (
-                <span className="text-[11px] font-semibold text-faint">{feed.length} shown</span>
-              )}
+              <span className="text-[11px] font-semibold text-faint">
+                {refreshing
+                  ? 'Refreshing…'
+                  : updatedAt
+                    ? `Updated ${updatedAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+                    : ''}
+              </span>
             </div>
 
             <div className="p-3 sm:p-4">
+              <p className="mb-3 flex items-start gap-1.5 rounded-lg bg-line-soft/50 px-3 py-2 text-[11px] leading-relaxed text-faint">
+                <Icon path={icons.shield} className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                Only confirmed public donations are listed. Entries the MSWDO corrects or archives are removed from this feed automatically.
+              </p>
               {loading && <p className="p-4 text-xs text-faint">Loading…</p>}
               {!loading && feed.length === 0 && (
                 <div className="rounded-lg border border-dashed border-line-soft py-10 text-center">
@@ -220,7 +282,7 @@ export default function LandingPage() {
                 {feed.map((entry) => (
                   <div
                     key={entry.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line-soft px-3 py-3 sm:px-4 transition-colors hover:bg-line-soft/30"
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line-soft px-3 py-3 transition-colors hover:bg-line-soft/30 sm:px-4"
                   >
                     <div className="flex min-w-0 items-start gap-3">
                       <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-beneficiary-light text-beneficiary-dark">
@@ -228,15 +290,35 @@ export default function LandingPage() {
                       </span>
                       <div className="min-w-0">
                         <div className="break-words text-sm font-semibold text-ink">
-                          {entry.item} {entry.quantity ? `— ${entry.quantity} ${entry.unit || ''}` : ''}
+                          {entry.item}
+                          {entry.quantity ? (
+                            <span className="font-normal text-muted"> · {entry.quantity} {entry.unit || ''}</span>
+                          ) : null}
                         </div>
-                        <div className="text-xs text-faint">
-                          Donated by {entry.donor_name || 'Anonymous'} · Brgy. {entry.barangay} ·{' '}
-                          {new Date(entry.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-faint">
+                          <span>
+                            Donated by <span className="font-semibold text-muted">{entry.donor_name || 'Anonymous'}</span>
+                          </span>
+                          {entry.barangay && (
+                            <>
+                              <span aria-hidden="true">·</span>
+                              <span>Brgy. {entry.barangay}</span>
+                            </>
+                          )}
+                          <span aria-hidden="true">·</span>
+                          <time dateTime={entry.created_at} title={fullDate(entry.created_at)}>
+                            {timeAgo(entry.created_at)}
+                          </time>
                         </div>
                       </div>
                     </div>
-                    {entry.category && <Badge tone="neutral">{entry.category}</Badge>}
+                    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                      {entry.category && <Badge tone="neutral">{entry.category}</Badge>}
+                      <span className="inline-flex items-center gap-1 rounded-full bg-donor-light px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-donor-dark">
+                        <Icon path={icons.check} className="h-3 w-3" />
+                        Verified
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>

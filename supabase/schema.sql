@@ -40,6 +40,8 @@ create table beneficiaries (
   barangay text not null,
   household_size int not null,
   contact_number text,
+  status text not null default 'active',
+  archived_at timestamptz,
   created_at timestamptz default now()
 );
 
@@ -54,7 +56,8 @@ create table donations (
   quantity text,
   barangay text,
   is_private boolean default false,
-  status text default 'pending' check (status in ('pending', 'confirmed')),
+  status text default 'pending' check (status in ('pending', 'confirmed', 'archived')),
+  archived_at timestamptz,
   created_at timestamptz default now()
 );
 
@@ -125,9 +128,13 @@ create policy "admin deletes beneficiaries" on beneficiaries
   for delete using (public.is_admin());
 
 -- Donations: donor reads their own; public can read non-private confirmed
--- entries (for the landing page feed); admin has full access
+-- entries that were not archived (for the landing page feed); admin has full access
 create policy "public reads confirmed public donations" on donations
-  for select using (status = 'confirmed' and is_private = false);
+  for select using (
+    status = 'confirmed'
+    and coalesce(is_private, false) = false
+    and archived_at is null
+  );
 create policy "donor reads own donations" on donations
   for select using (auth.uid() = donor_id or public.is_admin());
 create policy "admin inserts donations" on donations
@@ -198,6 +205,36 @@ end;
 $$;
 
 grant execute on function public.delete_archived_record(text, uuid) to authenticated;
+
+-- Public dashboard totals. Counts only, never personal data.
+create or replace function public.public_stats()
+returns table (donations bigint, households bigint, served bigint)
+language sql
+security definer
+set search_path = public
+as $$
+  select
+    (
+      select count(*)
+      from public.donations
+      where status = 'confirmed'
+        and coalesce(is_private, false) = false
+        and archived_at is null
+    ),
+    (
+      select count(*)
+      from public.beneficiaries
+      where coalesce(status, 'active') <> 'archived'
+    ),
+    (
+      select count(distinct household_id)
+      from public.distributions
+      where household_id is not null
+        and archived_at is null
+    );
+$$;
+
+grant execute on function public.public_stats() to anon, authenticated;
 
 -- ─────────────────────────────────────────────
 -- 6. Storage bucket for e-signatures
