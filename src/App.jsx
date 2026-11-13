@@ -10,6 +10,7 @@ import DistributionStatus from './pages/donor/DistributionStatus.jsx'
 import AdminLogin from './pages/admin/AdminLogin.jsx'
 import AdminLayout from './pages/admin/AdminLayout.jsx'
 import AdminDashboard from './pages/admin/AdminDashboard.jsx'
+import AdminManual from './pages/admin/AdminManual.jsx'
 import DonationsTab from './pages/admin/DonationsTab.jsx'
 import BeneficiaryRegistryTab from './pages/admin/BeneficiaryRegistryTab.jsx'
 import RecordDistributionTab from './pages/admin/RecordDistributionTab.jsx'
@@ -54,6 +55,7 @@ export default function App() {
         {/* Administrator — all pages inside share the background photo + tab bar */}
         <Route element={<AdminLayout />}>
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
+          <Route path="/admin/manual" element={<AdminManual />} />
           <Route path="/admin/donations" element={<DonationsTab />} />
           <Route path="/admin/beneficiaries" element={<BeneficiaryRegistryTab />} />
           <Route path="/admin/distribution" element={<RecordDistributionTab />} />

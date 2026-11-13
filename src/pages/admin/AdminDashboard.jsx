@@ -26,6 +26,7 @@ export const icons = {
   doc: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M9 13h6" /><path d="M9 17h6" /></>,
   barangay: <><path d="M12 2 3 7v13h18V7z" /><path d="M9 21v-6h6v6" /></>,
   staff: <><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" /></>,
+  manual: <><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></>,
   logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" /></>,
   chevronLeft: <path d="m15 6-6 6 6 6" />,
   chevronRight: <path d="m9 6 6 6-6 6" />,
@@ -51,6 +52,7 @@ export const TABS = [
   { label: 'Requisition (RIS)', to: '/admin/ris', icon: 'doc' },
   { label: 'Archive', to: '/admin/archive', icon: 'archive' },
   { label: 'Staff profile', to: '/admin/staff-profile', icon: 'staff' },
+  { label: 'User manual', to: '/admin/manual', icon: 'manual' },
 ]
 
 export function AdminTabs({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) {
@@ -69,7 +71,7 @@ export function AdminTabs({ collapsed, setCollapsed, mobileOpen, setMobileOpen }
     { title: null, items: [TABS[0]] },
     { title: 'Operations', items: [TABS[2], TABS[3], TABS[4], TABS[7]] },
     { title: 'Data & Reports', items: [TABS[1], TABS[5], TABS[6], TABS[8]] },
-    { title: 'Account', items: [TABS[9]] },
+    { title: 'Account', items: [TABS[9], TABS[10]] },
   ]
 
   return (
@@ -456,7 +458,7 @@ export default function AdminDashboard() {
               <p className="mt-0.5 text-[11px] text-white/75 sm:hidden">{dateLabel}</p>
             </div>
           </div>
-          <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-start">
+          <div className="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:justify-end">
             <span className="flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[11px] font-semibold">
               <span className="h-2 w-2 animate-pulse rounded-full bg-green-300" />
               Live
@@ -466,6 +468,13 @@ export default function AdminDashboard() {
                 </span>
               )}
             </span>
+            <Link
+              to="/admin/manual"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-3 py-2 text-xs font-bold text-white transition hover:bg-white/25"
+            >
+              <Icon path={icons.manual} className="h-3.5 w-3.5" />
+              Manual
+            </Link>
             <button
               onClick={refreshNow}
               className="rounded-lg bg-white px-4 py-2 text-xs font-bold text-admin-dark shadow-sm transition hover:bg-white/90"
